@@ -37,7 +37,7 @@ def main(raw_args=None):
 
 	SUMMARY_SCATTER = IN_DIR + 'tel_lens_scatter.png'
 	CONFUSION_PLOT  = IN_DIR + 'subtel_confusion_matrix.png'
-	OUT_TSV         = IN_DIR + 'tlens.tsv'
+	OUT_TSV         = IN_DIR + 'results.tsv'
 	MERGED_ALNS     = IN_DIR + 'merged_aln.p'
 	TH_COMP_OUT     = IN_DIR + 'telomerehunter_comparison.tsv'
 
@@ -284,7 +284,7 @@ def main(raw_args=None):
 				my_percentile = int(TL_METHOD[1:])
 				consensus_tl = np.percentile(my_tlens, my_percentile)
 
-			f_out.write(sorted_ref_keys[ki][3] + '\t' + str(my_pos) + '\t' + str(consensus_tl) + '\t' + ','.join([str(n) for n in my_tlens]) + '\n')
+			f_out.write(sorted_ref_keys[ki][3] + '\t' + str(my_pos) + '\t' + str(int(consensus_tl)) + '\t' + ','.join([str(n) for n in my_tlens]) + '\n')
 			#
 			comp_data.append([sorted_ref_keys[ki][3], my_pos, [n for n in my_tlens]])
 		print()
