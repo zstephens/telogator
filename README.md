@@ -3,9 +3,13 @@ A method for measuring chromosome-specific TL from long reads.
 
 ## (1) making T2T + alt subtel reference:
 
-`gunzip resources/stong_subtel_new.fa.gz`  
+Obtain t2t reference sequence from https://github.com/marbl/CHM13 (`chm13.draft_v1.1.fa`)
 
-`cat chm13.draft_v1.1.fa stong_subtel_new.fa > t2t-and-subtel.fa`  
+Append alternate subtelomere assemblies:
+
+`gunzip resources/stong_subtels.fa.gz`  
+
+`cat chm13.draft_v1.1.fa stong_subtels.fa > t2t-and-subtel.fa`  
 
 `samtools faidx t2t-and-subtel.fa`  
 
@@ -19,13 +23,13 @@ A method for measuring chromosome-specific TL from long reads.
 `    --bam aln.bam \ `  
 `    --fa clr-reads.fa.gz \ `  
 `    --out subtel-reads.fa.gz \ `  
-`    --bed resources/subtel_regions_t2t_plus_alts.bed `  
+`    --bed resources/subtel_regions.bed `  
 
 ## (4) align subtel reads to subtel-only reference (PacBio CLR):
 
-`gunzip resources/t2t-subtels-with-masked-tel-and-separated-tels_and_stong-subtels.fa.gz`  
+`gunzip resources/t2t-telogator-ref.fa.gz`  
 
-`pbmm2 align t2t-subtels-with-masked-tel-and-separated-tels_and_stong-subtels.fa subtel-reads.fa.gz subtel_aln.bam --preset SUBREAD --sort`  
+`pbmm2 align t2t-telogator-ref.fa subtel-reads.fa.gz subtel_aln.bam --preset SUBREAD --sort`  
 
 ## (5) run telogator on subtel-only alignment:
 
