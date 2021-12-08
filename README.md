@@ -38,3 +38,14 @@ Append alternate subtelomere assemblies:
 ## (6) create plots and output report:
 
 `python3 merge_jobs.py -i telogator_out/`  
+
+## Output files:
+
+* `results.tsv`: telomere positions and lengths. column format:  
+ * chr, boundary position, consensus TL, TL for each read, readlen for each read
+* `tel_lens_violin_*.png`: violin plots of telomere lengths  
+ * `all`: all reads
+ * `chr`: only reads anchored to t2t reference
+ * `alt`: only reads anchored to alternate assemblies
+
+Additionally, the `--extra-readlen-plots` and `-rl` parameters can be used with `merge_jobs.py` to produce violin plots of read lengths, for QC purposes.

@@ -25,7 +25,11 @@ def main(raw_args=None):
 	parser.add_argument('-cr', type=int, required=False, default=2,      metavar='[2]',       help="Minimum number of reads per cluster")
 	parser.add_argument('-th', type=int, required=False, default=0,      metavar='[0]',       help="TelomereHunter tel_content (for comparison)")
 	parser.add_argument('-gt', type=str, required=False, default='',     metavar='tlens.tsv', help="Ground truth tel lens (for comparison)")
-	parser.add_argument('--pbsim',       required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
+	parser.add_argument('-rl', type=int, required=False, default=50000,  metavar='[50000]',   help="Maximum y-axis value for readlength violin plots")
+	#
+	parser.add_argument('--pbsim',               required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
+	parser.add_argument('--extra-tlen-plots',    required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
+	parser.add_argument('--extra-readlen-plots', required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
 	args = parser.parse_args()
 
 	IN_DIR = args.i
@@ -41,21 +45,31 @@ def main(raw_args=None):
 	MERGED_ALNS     = IN_DIR + 'merged_aln.p'
 	TH_COMP_OUT     = IN_DIR + 'telomerehunter_comparison.tsv'
 
-	VIOLIN_00 = IN_DIR + 'tel_lens_violin_00_all.png'
-	VIOLIN_01 = IN_DIR + 'tel_lens_violin_01_chr.png'
-	VIOLIN_02 = IN_DIR + 'tel_lens_violin_02_alt.png'
-	VIOLIN_03 = IN_DIR + 'tel_lens_violin_03_all-pass.png'
-	VIOLIN_04 = IN_DIR + 'tel_lens_violin_04_all-filt.png'
-	VIOLIN_05 = IN_DIR + 'tel_lens_violin_05_chr-pass.png'
-	VIOLIN_06 = IN_DIR + 'tel_lens_violin_06_chr-filt.png'
-	VIOLIN_07 = IN_DIR + 'tel_lens_violin_07_alt-pass.png'
-	VIOLIN_08 = IN_DIR + 'tel_lens_violin_08_alt-filt.png'
+	VIOLIN_00 = IN_DIR + 'tlens_violin_00_all.png'
+	VIOLIN_01 = IN_DIR + 'tlens_violin_01_chr.png'
+	VIOLIN_02 = IN_DIR + 'tlens_violin_02_alt.png'
+	VIOLIN_03 = IN_DIR + 'tlens_violin_03_all-pass.png'
+	VIOLIN_04 = IN_DIR + 'tlens_violin_04_all-filt.png'
+	VIOLIN_05 = IN_DIR + 'tlens_violin_05_chr-pass.png'
+	VIOLIN_06 = IN_DIR + 'tlens_violin_06_chr-filt.png'
+	VIOLIN_07 = IN_DIR + 'tlens_violin_07_alt-pass.png'
+	VIOLIN_08 = IN_DIR + 'tlens_violin_08_alt-filt.png'
+	#
+	READLEN_VIOLIN_03 = IN_DIR + 'readlens_violin_03_all-pass.png'
+	READLEN_VIOLIN_04 = IN_DIR + 'readlens_violin_04_all-filt.png'
+	READLEN_VIOLIN_05 = IN_DIR + 'readlens_violin_05_chr-pass.png'
+	READLEN_VIOLIN_06 = IN_DIR + 'readlens_violin_06_chr-filt.png'
+	READLEN_VIOLIN_07 = IN_DIR + 'readlens_violin_07_alt-pass.png'
+	READLEN_VIOLIN_08 = IN_DIR + 'readlens_violin_08_alt-filt.png'
 
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.cr
 	READS_ARE_PBSIM     = args.pbsim
 	TEL_HUNTER_AVG      = args.th
 	GROUND_TRUTH_TLENS  = args.gt
+	EXTRA_TLEN_PLOTS    = args.extra_tlen_plots
+	EXTRA_READLEN_PLOTS = args.extra_readlen_plots
+	EXTRA_READLEN_YMAX  = args.rl
 
 	gt_tlen = {}
 	if len(GROUND_TRUTH_TLENS):
@@ -160,6 +174,7 @@ def main(raw_args=None):
 	#
 	ANCHORED_TEL_ALL  = [{}, {}, {}]
 	ANCHORED_TEL_FILT = [{}, {}, {}, {}, {}, {}]
+	READLEN_FILT      = [{}, {}, {}, {}, {}, {}]
 	CHR_OR_ALT        = {}
 	CONF_DAT          = {}
 	sorted_ref_keys   = []
@@ -213,7 +228,7 @@ def main(raw_args=None):
 
 	#
 	f_out = open(OUT_TSV, 'w')
-	f_out.write('#subtel' + '\t' + 'position' + '\t' + 'tel_len_' + TL_METHOD + '\t' + 'tel_lens' + '\n')
+	f_out.write('#subtel' + '\t' + 'position' + '\t' + 'tel_len_' + TL_METHOD + '\t' + 'tel_lens' + '\t' + 'read_lens' + '\n')
 	comp_data = []
 	for ki in range(len(sorted_ref_keys)):
 		k = sorted_ref_keys[ki][3]
@@ -231,9 +246,16 @@ def main(raw_args=None):
 
 			pos_list  = [n[0] for n in cl]
 			ind_list  = [n[1] for n in cl]
-			my_rnames = [COMBINED_ANCHORS[k][i][0] for i in ind_list]
-			my_tlens  = [COMBINED_ANCHORS[k][i][3] for i in ind_list]
 			my_pos    = int(np.mean(pos_list))
+			#
+			#my_rnames = [COMBINED_ANCHORS[k][i][0] for i in ind_list]
+			#my_tlens  = [COMBINED_ANCHORS[k][i][3] for i in ind_list]
+			#my_rlens  = [len(COMBINED_ANCHORS[k][i][6]) for i in ind_list]
+			#
+			sorted_by_tlen = sorted([(COMBINED_ANCHORS[k][i][3], len(COMBINED_ANCHORS[k][i][6]), COMBINED_ANCHORS[k][i][0]) for i in ind_list])
+			my_tlens  = [n_sbtl[0] for n_sbtl in sorted_by_tlen]
+			my_rlens  = [n_sbtl[1] for n_sbtl in sorted_by_tlen]
+			my_rnames = [n_sbtl[2] for n_sbtl in sorted_by_tlen]
 
 			for i in range(len(my_rnames)):
 				my_rname = my_rnames[i]
@@ -248,7 +270,9 @@ def main(raw_args=None):
 				for my_ind in my_inds:
 					if my_chr not in ANCHORED_TEL_FILT[my_ind]:
 						ANCHORED_TEL_FILT[my_ind][my_chr] = []
+						READLEN_FILT[my_ind][my_chr]      = []
 					ANCHORED_TEL_FILT[my_ind][my_chr].append(my_tlens[i])
+					READLEN_FILT[my_ind][my_chr].append(my_rlens[i])
 
 			if len(cl) < MIN_READS_PER_CLUST:
 				continue
@@ -284,7 +308,7 @@ def main(raw_args=None):
 				my_percentile = int(TL_METHOD[1:])
 				consensus_tl = np.percentile(my_tlens, my_percentile)
 
-			f_out.write(sorted_ref_keys[ki][3] + '\t' + str(my_pos) + '\t' + str(int(consensus_tl)) + '\t' + ','.join([str(n) for n in my_tlens]) + '\n')
+			f_out.write(sorted_ref_keys[ki][3] + '\t' + str(my_pos) + '\t' + str(int(consensus_tl)) + '\t' + ','.join([str(n) for n in my_tlens]) + '\t' + ','.join([str(n) for n in my_rlens]) + '\n')
 			#
 			comp_data.append([sorted_ref_keys[ki][3], my_pos, [n for n in my_tlens]])
 		print()
@@ -299,16 +323,41 @@ def main(raw_args=None):
 	if len(gt_tlen):
 		my_pm = False
 
-	tel_len_violin_plot(ANCHORED_TEL_ALL[0], VIOLIN_00, plot_means=my_pm, ground_truth_dict=gt_tlen)
-	tel_len_violin_plot(ANCHORED_TEL_ALL[1], VIOLIN_01, plot_means=my_pm, ground_truth_dict=gt_tlen)
-	tel_len_violin_plot(ANCHORED_TEL_ALL[2], VIOLIN_02, plot_means=my_pm, ground_truth_dict=gt_tlen)
+	readlen_plot_params = {'p_color':'gray',
+	                       'q_color':'gray',
+	                       'y_label':'<-- q     read length     p -->',
+	                       'p_ymax':EXTRA_READLEN_YMAX,
+	                       'q_ymax':EXTRA_READLEN_YMAX,
+	                       'y_step':10000}
+
+	if EXTRA_TLEN_PLOTS:
+		tel_len_violin_plot(ANCHORED_TEL_ALL[0], VIOLIN_00, plot_means=my_pm, ground_truth_dict=gt_tlen)
+		tel_len_violin_plot(ANCHORED_TEL_ALL[1], VIOLIN_01, plot_means=my_pm, ground_truth_dict=gt_tlen)
+		tel_len_violin_plot(ANCHORED_TEL_ALL[2], VIOLIN_02, plot_means=my_pm, ground_truth_dict=gt_tlen)
 	#
 	tel_len_violin_plot(ANCHORED_TEL_FILT[0], VIOLIN_03, plot_means=my_pm, ground_truth_dict=gt_tlen)
-	tel_len_violin_plot(ANCHORED_TEL_FILT[1], VIOLIN_04, plot_means=my_pm, ground_truth_dict=gt_tlen)
+	if EXTRA_READLEN_PLOTS:
+		tel_len_violin_plot(READLEN_FILT[0], READLEN_VIOLIN_03, custom_plot_params=readlen_plot_params)
+	if EXTRA_TLEN_PLOTS:
+		tel_len_violin_plot(ANCHORED_TEL_FILT[1], VIOLIN_04, plot_means=my_pm, ground_truth_dict=gt_tlen)
+		if EXTRA_READLEN_PLOTS:
+			tel_len_violin_plot(READLEN_FILT[1], READLEN_VIOLIN_04, custom_plot_params=readlen_plot_params)
+	#
 	tel_len_violin_plot(ANCHORED_TEL_FILT[2], VIOLIN_05, plot_means=my_pm, ground_truth_dict=gt_tlen)
-	tel_len_violin_plot(ANCHORED_TEL_FILT[3], VIOLIN_06, plot_means=my_pm, ground_truth_dict=gt_tlen)
+	if EXTRA_READLEN_PLOTS:
+		tel_len_violin_plot(READLEN_FILT[2], READLEN_VIOLIN_05, custom_plot_params=readlen_plot_params)
+	if EXTRA_TLEN_PLOTS:
+		tel_len_violin_plot(ANCHORED_TEL_FILT[3], VIOLIN_06, plot_means=my_pm, ground_truth_dict=gt_tlen)
+		if EXTRA_READLEN_PLOTS:
+			tel_len_violin_plot(READLEN_FILT[3], READLEN_VIOLIN_06, custom_plot_params=readlen_plot_params)
+	#
 	tel_len_violin_plot(ANCHORED_TEL_FILT[4], VIOLIN_07, plot_means=my_pm, ground_truth_dict=gt_tlen)
-	tel_len_violin_plot(ANCHORED_TEL_FILT[5], VIOLIN_08, plot_means=my_pm, ground_truth_dict=gt_tlen)
+	if EXTRA_READLEN_PLOTS:
+		tel_len_violin_plot(READLEN_FILT[4], READLEN_VIOLIN_07, custom_plot_params=readlen_plot_params)
+	if EXTRA_TLEN_PLOTS:
+		tel_len_violin_plot(ANCHORED_TEL_FILT[5], VIOLIN_08, plot_means=my_pm, ground_truth_dict=gt_tlen)
+		if EXTRA_READLEN_PLOTS:
+			tel_len_violin_plot(READLEN_FILT[5], READLEN_VIOLIN_08, custom_plot_params=readlen_plot_params)
 
 	if READS_ARE_PBSIM:
 		anchor_confusion_matrix(CONF_DAT, CONFUSION_PLOT)

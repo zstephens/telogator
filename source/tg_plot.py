@@ -154,17 +154,25 @@ def plot_all_read_data(density_data, tl_vals, aln_dat, tel_window, f_title, fig_
 #
 #
 #
-def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict={}):
+def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict={}, custom_plot_params={}):
 	#
 	# plotting constants
 	#
 	mpl.rcParams.update({'font.size': 18, 'font.weight':'bold'})
+	plot_params = {'p_color':'blue',
+	               'q_color':'red',
+	               'y_label':'<-- q   telomere length   p -->',
+	               'p_ymax':20000,
+	               'q_ymax':20000,
+	               'y_step':5000}
+	for k in custom_plot_params.keys():
+		plot_params[k] = custom_plot_params[k]
 	#
 	xlab = ['-'] + [str(n) for n in range(1,22+1)] + ['X', 'Y']
 	xtck = list(range(1,len(xlab)+1))
-	ydel = 5000
-	(y_min, y_max) = (20000, 20000)
-	ytck  = list(range(-y_min, y_max+ydel, ydel))
+	ydel = plot_params['y_step']
+	(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
+	ytck  = list(range(-q_ymax, p_ymax+ydel, ydel))
 	ylab  = []
 	for n in ytck:
 		if n == 0:
@@ -214,7 +222,7 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	if len(dat_l_p) and len(dat_p_p):
 		violin_parts_p = mpl.violinplot(dat_l_p, dat_p_p, points=200, widths=dat_w_p)
 		for pc in violin_parts_p['bodies']:
-			pc.set_facecolor('blue')
+			pc.set_facecolor(plot_params['p_color'])
 			pc.set_edgecolor('black')
 			pc.set_alpha(0.7)
 		for k in v_line_keys:
@@ -225,7 +233,7 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	if len(dat_l_q) and len(dat_p_q):
 		violin_parts_q = mpl.violinplot(dat_l_q, dat_p_q, points=200, widths=dat_w_q)
 		for pc in violin_parts_q['bodies']:
-			pc.set_facecolor('red')
+			pc.set_facecolor(plot_params['q_color'])
 			pc.set_edgecolor('black')
 			pc.set_alpha(0.7)
 		for k in v_line_keys:
@@ -264,8 +272,8 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	mpl.xticks(xtck, xlab)
 	mpl.xlim([0,len(xlab)+1])
 	mpl.yticks(ytck, ylab)
-	mpl.ylim([-y_min, y_max])
-	mpl.ylabel('<-- q   telomere length   p -->')
+	mpl.ylim([-q_ymax, p_ymax])
+	mpl.ylabel(plot_params['y_label'])
 	mpl.grid(linestyle='--', alpha=0.5)
 	mpl.tight_layout()
 	mpl.savefig(out_fn)
