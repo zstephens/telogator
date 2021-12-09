@@ -43,6 +43,7 @@ def main(raw_args=None):
 	#
 	parser.add_argument('--job', type=int,   required=False, metavar=('my_job','n_jobs'), default=(0,0),           help='Job splitting for parallelization', nargs=2)
 	parser.add_argument('--plot',            required=False, action='store_true',         default=False,           help='Create read plots')
+	parser.add_argument('--debug',           required=False, action='store_true',         default=False,           help='Print results for each read as its processed')
 	args = parser.parse_args()
 
 	INPUT_SAM  = args.i
@@ -85,7 +86,8 @@ def main(raw_args=None):
 	ANCHORING_STRATEGY  = args.sa
 	MATCH_TRIM_STRATEGY = args.sm
 
-	PLOT_READS = args.plot
+	PLOT_READS  = args.plot
+	PRINT_DEBUG = args.debug
 
 	#
 	#
@@ -163,9 +165,10 @@ def main(raw_args=None):
 	for job_i in range(MYJOB-1, len(sorted_keys), NJOBS):
 
 		rnm = sorted_keys[job_i]
-		print('read', job_i, '/', len(sorted_keys))
+		if PRINT_DEBUG:
+			print('read', job_i, '/', len(sorted_keys))
 
-		abns_k = repeated_matches_trimming(sorted(ALIGNMENTS_BY_RNAME[rnm]), strategy=MATCH_TRIM_STRATEGY)
+		abns_k = repeated_matches_trimming(sorted(ALIGNMENTS_BY_RNAME[rnm]), strategy=MATCH_TRIM_STRATEGY, print_debug=PRINT_DEBUG)
 
 		# did we lose all of our alignments during trimming?
 		if len(abns_k) == 0:
@@ -437,8 +440,10 @@ def main(raw_args=None):
 					if aln[2] not in NONTEL_REF_SPANS_BY_CHR:
 						NONTEL_REF_SPANS_BY_CHR[aln[2]] = []
 					NONTEL_REF_SPANS_BY_CHR[aln[2]].append(tuple(sorted(aln[3:5])))
-				print(job_i, aln[:7])
-			print(adjacent_chr, adjacent_pos, my_tel_len, tel_ref_span, dist_to_nearest_aln, 'ind:', ati)
+				if PRINT_DEBUG:
+					print(job_i, aln[:7])
+			if PRINT_DEBUG:
+				print(adjacent_chr, adjacent_pos, my_tel_len, tel_ref_span, dist_to_nearest_aln, 'ind:', ati)
 			#
 			if adjacent_chr not in ALL_ANCHORS:
 				ALL_ANCHORS[adjacent_chr] = []

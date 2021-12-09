@@ -20,7 +20,7 @@ DUMMY_TEL_MAPQ = 60
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='merge_jobs.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
 	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/', help="* Path to telogator results directory")
-	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',     help="Method for computing TL (mean/median/p90)")
+	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',     help="Method for computing TL (mean/median/max/p90)")
 	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',    help="Maximum distance apart to cluster anchor positions")
 	parser.add_argument('-cr', type=int, required=False, default=2,      metavar='[2]',       help="Minimum number of reads per cluster")
 	parser.add_argument('-th', type=int, required=False, default=0,      metavar='[0]',       help="TelomereHunter tel_content (for comparison)")
@@ -304,6 +304,8 @@ def main(raw_args=None):
 				consensus_tl = np.mean(my_tlens)
 			elif TL_METHOD == 'median':
 				consensus_tl = np.median(my_tlens)
+			elif TL_METHOD == 'max':
+				consensus_tl = np.max(my_tlens)
 			elif TL_METHOD[0] == 'p':
 				my_percentile = int(TL_METHOD[1:])
 				consensus_tl = np.percentile(my_tlens, my_percentile)

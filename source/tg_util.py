@@ -114,10 +114,12 @@ def parse_read(line):
 
 # trim repeated matches in the same manner as pbmm2 (only affects read_pos coords)
 #
-def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='mapq'):
-	for n in alns:
-		print(n[:7], 'rdat len:', len(n[7]))
-	print()
+def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='mapq', print_debug=False):
+	if print_debug:
+		print('- matches trimming')
+		for n in alns:
+			print(n[:7], 'rdat len:', len(n[7]))
+		print()
 	r_coords = [[alns[n][0], alns[n][1], n] for n in range(len(alns))]
 	clust    = cluster_ranges(r_coords)
 	any_lap  = any([len(n) > 1 for n in clust])
@@ -136,7 +138,8 @@ def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='
 						max_span = (clust[i][j][0], clust[i][j][1], alns[clust[i][j][2]][6])
 					elif strategy == 'mapq' and alns[clust[i][j][2]][6] > max_span[2]:
 						max_span = (clust[i][j][0], clust[i][j][1], alns[clust[i][j][2]][6])
-				print('MAX_SPAN', max_span)
+				if print_debug:
+					print('MAX_SPAN', max_span)
 				#
 				max_found = False
 				del_list  = []
@@ -194,9 +197,10 @@ def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='
 	for di in del_list:
 		del alns_out[di]
 	#
-	for n in alns_out:
-		print(n[:7])
-	print()
+	if print_debug:
+		for n in alns_out:
+			print(n[:7])
+		print()
 	return alns_out
 
 # cluster a sorted list
