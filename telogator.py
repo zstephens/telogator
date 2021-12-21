@@ -32,19 +32,19 @@ MAX_NONTEL_MEDIAN_KMER_DENSITY = 0.25
 
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='Telogator v1.0', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
-	parser.add_argument('-i',    type=str,   required=True,  metavar='input.sam (or merged_aln.p or - for stdin)', help="* Long reads aligned to subtel ref (- for stdin)")
-	parser.add_argument('-o',    type=str,   required=True,  metavar='output/',                                    help="* Path to output directory")
-	parser.add_argument('-l',    type=int,   required=False, metavar='[5000]',            default=5000,            help="Minimum read length")
-	parser.add_argument('-t',    type=float, required=False, metavar='[0.9]',             default=0.9,             help="Maximum fraction of read that can be tel")
-	parser.add_argument('-p',    type=float, required=False, metavar='[0.5]',             default=0.5,             help="Telomere signal threshold (0-1)")
-	parser.add_argument('-pq',   type=float, required=False, metavar='[0.25]',            default=0.25,            help="Max minor p/q fraction in tel region")
+	parser.add_argument('-i',    type=str,   required=True,  metavar='in.sam / in.p / -',                    help="* Long reads aligned to subtel ref (- for stdin)")
+	parser.add_argument('-o',    type=str,   required=True,  metavar='output/',                              help="* Path to output directory")
+	parser.add_argument('-l',    type=int,   required=False, metavar='[5000]',            default=5000,      help="Min read length")
+	parser.add_argument('-t',    type=float, required=False, metavar='[0.9]',             default=0.9,       help="Max frac of read that can be tel")
+	parser.add_argument('-p',    type=float, required=False, metavar='[0.5]',             default=0.5,       help="Telomere signal threshold (0-1)")
+	parser.add_argument('-pq',   type=float, required=False, metavar='[0.25]',            default=0.25,      help="Max minor p/q fraction in tel region")
 	#
-	parser.add_argument('--sa',  type=str,   required=False, metavar='[largest]',         default='largest',       help="Subtel/tel anchoring strategy")
-	parser.add_argument('--sm',  type=str,   required=False, metavar='[mapq]',            default='mapq',          help="Repeated matches trimming strategy")
+	parser.add_argument('--sa',  type=str,   required=False, metavar='[largest]',         default='largest', help="Subtel/tel anchoring strategy")
+	parser.add_argument('--sm',  type=str,   required=False, metavar='[mapq]',            default='mapq',    help="Repeated matches trimming strategy")
 	#
-	parser.add_argument('--job', type=int,   required=False, metavar=('my_job','n_jobs'), default=(0,0),           help='Job splitting for parallelization', nargs=2)
-	parser.add_argument('--plot',            required=False, action='store_true',         default=False,           help='Create read plots')
-	parser.add_argument('--debug',           required=False, action='store_true',         default=False,           help='Print results for each read as its processed')
+	parser.add_argument('--job', type=int,   required=False, metavar=('my_job','n_jobs'), default=(0,0),     help='Job splitting for parallelization', nargs=2)
+	parser.add_argument('--plot',            required=False, action='store_true',         default=False,     help='Create read plots')
+	parser.add_argument('--debug',           required=False, action='store_true',         default=False,     help='Print results for each read as its processed')
 	args = parser.parse_args()
 
 	INPUT_SAM  = args.i
