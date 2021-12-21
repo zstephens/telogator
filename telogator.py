@@ -37,6 +37,7 @@ def main(raw_args=None):
 	parser.add_argument('-l',    type=int,   required=False, metavar='[5000]',            default=5000,            help="Minimum read length")
 	parser.add_argument('-t',    type=float, required=False, metavar='[0.9]',             default=0.9,             help="Maximum fraction of read that can be tel")
 	parser.add_argument('-p',    type=float, required=False, metavar='[0.5]',             default=0.5,             help="Telomere signal threshold (0-1)")
+	parser.add_argument('-pq',   type=float, required=False, metavar='[0.25]',            default=0.25,            help="Max minor p/q fraction in tel region")
 	#
 	parser.add_argument('--sa',  type=str,   required=False, metavar='[largest]',         default='largest',       help="Subtel/tel anchoring strategy")
 	parser.add_argument('--sm',  type=str,   required=False, metavar='[mapq]',            default='mapq',          help="Repeated matches trimming strategy")
@@ -82,6 +83,7 @@ def main(raw_args=None):
 	P_VS_Q_AMP_THRESH = args.p
 	MINIMUM_READ_LEN  = args.l
 	MAXIMUM_TEL_FRAC  = args.t
+	MAXIMUM_MINOR_PQ  = args.pq
 	#
 	ANCHORING_STRATEGY  = args.sa
 	MATCH_TRIM_STRATEGY = args.sm
@@ -159,7 +161,8 @@ def main(raw_args=None):
 	                 'unexplained_seq':0,
 	                 'nontel_kmer_dens':0,
 	                 'unmapped':0,
-	                 'trim_filter':0}
+	                 'trim_filter':0,
+	                 'pq_mix':0}
 	NONTEL_REF_SPANS_BY_CHR = {}
 	#
 	for job_i in range(MYJOB-1, len(sorted_keys), NJOBS):
@@ -215,6 +218,7 @@ def main(raw_args=None):
 		my_plot_title = ''
 		my_tel_aln    = []
 		my_tel_len    = None
+		my_tel_conc   = [{'p':0, 'q':0, None:0}, {'p':0, 'q':0, None:0}]
 		#
 		#	get tel lengths, from the left (p-arm)
 		#
@@ -235,6 +239,9 @@ def main(raw_args=None):
 			if cum_score[max_i] >= MIN_TEL_SCORE:
 				my_tel_len_p   = int(tel_regions[max_i][1] + TEL_WINDOW_SIZE/2)
 				#print('P-ARM TEL:', my_tel_len_p, [int(n) for n in cum_score.tolist()], max_i, '\n')
+				for i in range(0, max_i+1):
+					#print('tel_regions['+str(i)+'] =', tel_regions[i])
+					my_tel_conc[0][tel_regions[i][2]] += abs(tel_regions[i][1] - tel_regions[i][0])
 		#
 		#	get tel lengths, from the right (q-arm)
 		#
@@ -255,6 +262,9 @@ def main(raw_args=None):
 			if cum_score[max_i] >= MIN_TEL_SCORE:
 				my_tel_len_q   = int(tel_regions[-1][1] - tel_regions[max_i][0] + TEL_WINDOW_SIZE/2)
 				#print('Q-ARM TEL:', my_tel_len_q, [int(n) for n in cum_score.tolist()], max_i, '\n')
+				for i in range(max_i, len(tel_regions)):
+					#print('tel_regions['+str(i)+'] =', tel_regions[i])
+					my_tel_conc[1][tel_regions[i][2]] += abs(tel_regions[i][1] - tel_regions[i][0])
 
 		#
 		# sort out which tel to pick
@@ -284,11 +294,13 @@ def main(raw_args=None):
 			my_tel_len    = my_tel_len_p
 			my_plot_title = ' : p-arm tel = ' + str(my_tel_len_p)
 			my_tel_aln    = [[0, my_tel_len_p, 'tel-p', None, None, 'FWD']]
+			my_tel_conc   = my_tel_conc[0]
 		elif which_to_choose == 'q':
 			my_tel_len_p  = 0
 			my_tel_len    = my_tel_len_q
 			my_plot_title = ' : q-arm tel = ' + str(my_tel_len_q)
 			my_tel_aln    = [[len(rdat)-my_tel_len_q, len(rdat), 'tel-q', None, None, 'REV']]
+			my_tel_conc   = my_tel_conc[1]
 
 		#
 		# filters
@@ -335,6 +347,14 @@ def main(raw_args=None):
 			if my_nontel_kmer_dens > MAX_NONTEL_MEDIAN_KMER_DENSITY:
 				reads_skipped['nontel_kmer_dens'] += 1
 				my_plot_dir = OUT_PLOT_DIR + 'filt-nontelkmer/'
+				skip_me     = True
+		# (6) too much mixture of p and q
+		if skip_me == False:
+			tel_types     = sorted([my_tel_conc['p'], my_tel_conc['q']])
+			my_minor_frac = float(tel_types[0])/sum(tel_types)
+			if my_minor_frac > MAXIMUM_MINOR_PQ:
+				reads_skipped['pq_mix'] += 1
+				my_plot_dir = OUT_PLOT_DIR + 'filt-pqmix/'
 				skip_me     = True
 
 		#

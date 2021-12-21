@@ -19,7 +19,7 @@ Append alternate subtelomere assemblies:
 
 ## (3) extract reads mapped to subtels:
 
-`python3 grab_subreads_from_t2t-and-subtel_aln.py \ `  
+`python3 grab_reads_from_subtel_aln.py \ `  
 `    --bam aln.bam \ `  
 `    --fa clr-reads.fa.gz \ `  
 `    --out subtel-reads.fa.gz \ `  

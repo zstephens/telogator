@@ -8,6 +8,9 @@ def strip_polymerase_coords(rn):
 def get_sra_readname(rn):
 	return rn.split(' ')[0]
 
+def get_ccs_readname(rn):
+	return rn.split(' ')[0]
+
 def exists_and_is_nonzero(fn):
 	if os.path.isfile(fn):
 		if os.path.getsize(fn) > 0:
@@ -39,13 +42,13 @@ def read_fa_entry_faster(fa_file):
 
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='grab_subreads_from_t2t-and-subtel_aln.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
-	parser.add_argument('--bam',      type=str, required=True,  metavar='input.bam',  help="* Input BAM")
-	parser.add_argument('--fa',       type=str, required=True,  metavar='input.fa',   help="* Raw subreads (.fa or .fa.gz)")
-	parser.add_argument('--out',      type=str, required=True,  metavar='output.fa',  help="* Output reads (.fa or .fa.gz)")
-	parser.add_argument('--bed',      type=str, required=True,  metavar='subtel.bed', help="* Subtel regions")
-	parser.add_argument('--samtools', type=str, required=False, metavar='samtools',   help="/path/to/samtools", default='samtools')
-	parser.add_argument('--readtype', type=str, required=False, metavar='CLR / SRA',  help="Read name format",  default='CLR')
-	parser.add_argument('--newlines', type=str, required=False, metavar='yes / no',   help="Read data split across multiple lines?",  default='yes')
+	parser.add_argument('--bam',      type=str, required=True,  metavar='input.bam',        help="* Input BAM")
+	parser.add_argument('--fa',       type=str, required=True,  metavar='input.fa',         help="* Raw subreads (.fa or .fa.gz)")
+	parser.add_argument('--out',      type=str, required=True,  metavar='output.fa',        help="* Output reads (.fa or .fa.gz)")
+	parser.add_argument('--bed',      type=str, required=True,  metavar='subtel.bed',       help="* Subtel regions")
+	parser.add_argument('--samtools', type=str, required=False, metavar='samtools',         help="/path/to/samtools", default='samtools')
+	parser.add_argument('--readtype', type=str, required=False, metavar='CCS / CLR / SRA',  help="Read name format",  default='CLR')
+	parser.add_argument('--newlines', type=str, required=False, metavar='yes / no',         help="Read data split across multiple lines?",  default='yes')
 	args = parser.parse_args()
 
 	IN_BAM     = args.bam
@@ -106,6 +109,8 @@ def main(raw_args=None):
 			rn_dict[strip_polymerase_coords(line.strip())] = True
 		elif READTYPE == 'SRA':
 			rn_dict[get_sra_readname(line.strip())] = True
+		elif READTYPE == 'CCS':
+			rn_dict[get_ccs_readname(line.strip())] = True
 		else:
 			print('Error: unknown read type, must be: CLR or SRA')
 			exit(1)
@@ -131,6 +136,8 @@ def main(raw_args=None):
 		if READTYPE == 'CLR' and strip_polymerase_coords(my_name) in rn_dict:
 			f_out.write('>' + my_name + '\n' + my_rdat + '\n')
 		elif READTYPE == 'SRA' and get_sra_readname(my_name) in rn_dict:
+			f_out.write('>' + my_name + '\n' + my_rdat + '\n')
+		elif READTYPE == 'CCS' and get_ccs_readname(my_name) in rn_dict:
 			f_out.write('>' + my_name + '\n' + my_rdat + '\n')
 	f.close()
 	f_out.close()
