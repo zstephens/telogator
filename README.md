@@ -35,6 +35,8 @@ Append alternate subtelomere assemblies:
 
 `samtools view subtel_aln.bam | python3 telogator.py -i - -o telogator_out/`  
 
+For Nanopore reads which may contain systematic errors in telomere regions, using the `-k` input option to select `resources/nanopore_kmers.tsv` may be advised. See [this preprint](https://www.biorxiv.org/content/10.1101/2022.01.11.475254v1) for more information.
+
 ## (6) create plots and output report:
 
 `python3 merge_jobs.py -i telogator_out/`  

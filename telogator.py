@@ -1,5 +1,6 @@
 import argparse
 import copy
+import pathlib
 import pickle
 import sys
 
@@ -34,13 +35,14 @@ def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='Telogator v1.0', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
 	parser.add_argument('-i',    type=str,   required=True,  metavar='in.sam / in.p / -',                    help="* Long reads aligned to subtel ref (- for stdin)")
 	parser.add_argument('-o',    type=str,   required=True,  metavar='output/',                              help="* Path to output directory")
-	parser.add_argument('-l',    type=int,   required=False, metavar='[5000]',            default=5000,      help="Min read length")
-	parser.add_argument('-t',    type=float, required=False, metavar='[0.9]',             default=0.9,       help="Max frac of read that can be tel")
-	parser.add_argument('-p',    type=float, required=False, metavar='[0.5]',             default=0.5,       help="Telomere signal threshold (0-1)")
-	parser.add_argument('-pq',   type=float, required=False, metavar='[0.25]',            default=0.25,      help="Max minor p/q fraction in tel region")
+	parser.add_argument('-k',    type=str,   required=False, metavar='default_kmers.tsv', default='',        help="Telomere kmers to search for")
+	parser.add_argument('-l',    type=int,   required=False, metavar='5000',              default=5000,      help="Min read length")
+	parser.add_argument('-t',    type=float, required=False, metavar='0.9',               default=0.9,       help="Max frac of read that can be tel")
+	parser.add_argument('-p',    type=float, required=False, metavar='0.5',               default=0.5,       help="Telomere signal threshold (0-1)")
+	parser.add_argument('-pq',   type=float, required=False, metavar='0.25',              default=0.25,      help="Max minor p/q fraction in tel region")
 	#
-	parser.add_argument('--sa',  type=str,   required=False, metavar='[largest]',         default='largest', help="Subtel/tel anchoring strategy")
-	parser.add_argument('--sm',  type=str,   required=False, metavar='[mapq]',            default='mapq',    help="Repeated matches trimming strategy")
+	parser.add_argument('--sa',  type=str,   required=False, metavar='largest',           default='largest', help="Subtel/tel anchoring strategy")
+	parser.add_argument('--sm',  type=str,   required=False, metavar='mapq',              default='mapq',    help="Repeated matches trimming strategy")
 	#
 	parser.add_argument('--job', type=int,   required=False, metavar=('my_job','n_jobs'), default=(0,0),     help='Job splitting for parallelization', nargs=2)
 	parser.add_argument('--plot',            required=False, action='store_true',         default=False,     help='Create read plots')
@@ -78,6 +80,31 @@ def main(raw_args=None):
 		OUT_PLOT_DIR += '/'
 	makedir(OUT_PLOT_DIR)
 	OUT_PICKLE = OUT_PLOT_DIR + 'tel-data' + '_job-'+str(MYJOB)+'-'+str(NJOBS) + '.p'
+
+	#
+	KMER_FILE = args.k
+	KMER_DICT = {'p':[], 'q':[]}
+	if KMER_FILE == '':
+		print('using default telomere kmers.')
+		sim_path = pathlib.Path(__file__).resolve().parent
+		kmer_fn  = str(sim_path) + '/resources/default_kmers.tsv'
+		f = open(kmer_fn,'r')
+		for line in f:
+			splt = line.strip().split('\t')
+			KMER_DICT[splt[0].lower()].append(splt[1])
+		f.close()
+	else:
+		fn_suffix = KMER_FILE.split('/')[-1]
+		print('using user-specified kmer list:', fn_suffix)
+		if exists_and_is_nonzero(KMER_FILE):
+			f = open(KMER_FILE,'r')
+			for line in f:
+				splt = line.strip().split('\t')
+				KMER_DICT[splt[0].lower()].append(splt[1])
+			f.close()
+		else:
+			print('Error: kmer list not found')
+			exit(1)
 
 	#
 	P_VS_Q_AMP_THRESH = args.p
@@ -200,8 +227,8 @@ def main(raw_args=None):
 		refs_we_aln_to = sorted(list(set(refs_we_aln_to)))
 
 		# compute telomere kmer density
-		(td_p_e0, td_p_e1) = get_telomere_kmer_density(rdat, 'p', TEL_WINDOW_SIZE)
-		(td_q_e0, td_q_e1) = get_telomere_kmer_density(rdat, 'q', TEL_WINDOW_SIZE)
+		(td_p_e0, td_p_e1) = get_telomere_kmer_density(rdat, KMER_DICT['p'], TEL_WINDOW_SIZE)
+		(td_q_e0, td_q_e1) = get_telomere_kmer_density(rdat, KMER_DICT['q'], TEL_WINDOW_SIZE)
 
 		#
 		#	ESTIMATE TELOMERE BOUNDARIES

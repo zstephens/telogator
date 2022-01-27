@@ -7,32 +7,16 @@ import numpy as np
 from source.tg_prob import DiscreteDistribution
 from source.tg_util import RC
 
-TEL_KMERS_P = ['CCCTAA', 'CCCCTAA', 'CCTAA', 'CCCCTAACCCTAA',
-              'CCCTA', 'CCCGAA', 'CCCTAACCTAA', 'CCCTACCCTAA',
-              'CCCTAAA', 'CCCAA', 'CCCA', 'CCCCCTAA']
-
-TEL_KMERS_Q = ['TTAGGG', 'TGAGGG', 'TTAGGGG', 'TTAGG',
-              'TTAGGGTTAGGGG', 'TTAGGTTAGGG', 'TAGGG',
-              'TAGGGTTAGGG', 'TTTAGGG', 'TTGGG', 'GCGGC',
-              'TTGGGTTAGGG', 'TTAGGGTTTAGGG', 'TGGG']
-
 COEF_EDIT_0 = 2.
 COEF_EDIT_1 = 1.
 
 #
 #
-def get_telomere_kmer_density(read_dat, telomere_type, tel_window, smoothing=False):
+def get_telomere_kmer_density(read_dat, kmer_list, tel_window, smoothing=False):
 	re_hits = [[], []]
-	if telomere_type == 'p':
-		telomere_list = TEL_KMERS_P
-	elif telomere_type == 'q':
-		telomere_list = TEL_KMERS_Q
-	else:
-		print('telomere_type must be p or q')
-		exit(1)
-	for i in range(len(telomere_list)):
-		re_hits[0].extend([(n.start(0), n.end(0), i, 0) for n in re.finditer(telomere_list[i], read_dat)])
-		re_hits[1].extend([(n.start(0), n.end(0), i, 1) for n in regex.finditer("("+telomere_list[i]+"){e<=1}", read_dat, overlapped=True)])
+	for i in range(len(kmer_list)):
+		re_hits[0].extend([(n.start(0), n.end(0), i, 0) for n in re.finditer(kmer_list[i], read_dat)])
+		re_hits[1].extend([(n.start(0), n.end(0), i, 1) for n in regex.finditer("("+kmer_list[i]+"){e<=1}", read_dat, overlapped=True)])
 	#
 	tel_hit_p0 = np.zeros(len(read_dat))
 	tel_hit_p1 = np.zeros(len(read_dat))
@@ -96,13 +80,12 @@ def get_telomere_regions(td_p_e0, td_p_e1, td_q_e0, td_q_e1, tel_window, pthresh
 	return (p_vs_q_power, tel_regions)
 
 #
-#
-#
-# median absolute deviation, with some normalization for consistency, that I don't fully understand
+# median absolute deviation, with some normalization
 #
 def mad(x, c=1.4826):
 	return c * np.median(np.abs(x - np.median(x)))
 
+#
 # adapted from: http://connor-johnson.com/2016/01/24/using-pywavelets-to-remove-high-frequency-noise/
 #
 def wavelet_smooth(x, wavelet="db4", smoothing_level=5, fail_sigma=1e-3):
@@ -120,9 +103,6 @@ def wavelet_smooth(x, wavelet="db4", smoothing_level=5, fail_sigma=1e-3):
 	y = pywt.waverec( coeff, wavelet, mode="per" )
 	return y
 
-#
-#
-#
 #
 #
 def write_kmer_prob_matrix(fn, kmer_list, trans_matrix):
