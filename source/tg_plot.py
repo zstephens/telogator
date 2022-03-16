@@ -5,6 +5,8 @@ import matplotlib.cm as cmx
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 
+from source.tg_util import posmax
+
 #
 #
 #
@@ -152,72 +154,148 @@ def plot_all_read_data(density_data, tl_vals, aln_dat, tel_window, f_title, fig_
 	mpl.close(fig)
 
 #
+#	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, read-orientation, readname]
 #
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.spatial.distance import pdist, squareform
 #
-def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict={}, custom_plot_params={}):
+def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name):
+	#if my_chr != 'chr3q':
+	#	return
 	#
-	# plotting constants
+	which_tel = my_chr[-1]
+	max_tlen  = max([n[1] for n in kmer_dat])
+	n_reads   = len(kmer_dat)
+	X_STEP    = 1000
+	scolors   = sorted(list(set(kmer_colors)))
+	col_2_sc  = {n:scolors.index(n) for n in scolors}
+	n_colors  = len(scolors)
 	#
-	mpl.rcParams.update({'font.size': 18, 'font.weight':'bold'})
-	plot_params = {'p_color':'blue',
-	               'q_color':'red',
-	               'y_label':'<-- q   telomere length   p -->',
-	               'p_ymax':20000,
-	               'q_ymax':20000,
-	               'y_step':5000}
-	for k in custom_plot_params.keys():
-		plot_params[k] = custom_plot_params[k]
+	# create color vectors
 	#
-	xlab = ['-'] + [str(n) for n in range(1,22+1)] + ['X', 'Y']
-	xtck = list(range(1,len(xlab)+1))
-	ydel = plot_params['y_step']
-	(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
-	ytck  = list(range(-q_ymax, p_ymax+ydel, ydel))
-	ylab  = []
-	for n in ytck:
-		if n == 0:
-			ylab.append('')
+	my_color_dat  = []
+	my_col_single = []
+	for i in range(n_reads):
+		[my_kmer_hits, my_tlen, my_orr, my_rname] = kmer_dat[i]
+		my_color_dat.append(np.zeros((n_colors, max_tlen)))
+		my_col_single.append(np.zeros(max_tlen))
+		for ki in range(len(my_kmer_hits)):
+			if len(my_kmer_hits[ki]):
+				if which_tel == 'p':
+					adj = max_tlen - my_tlen
+				else:
+					adj = 0
+				for kmer_span in my_kmer_hits[ki]:
+					cp = col_2_sc[kmer_colors[ki]]
+					xp = [kmer_span[0]+adj, kmer_span[1]+adj]
+					my_color_dat[-1][cp,xp[0]:xp[1]] = 1
+					my_col_single[-1][xp[0]:xp[1]]   = col_2_sc[kmer_colors[ki]]+1
+	#
+	####dist_matrix = np.zeros((n_reads,n_reads))
+	####all_adj     = np.zeros((n_reads,n_reads))
+	####for i in range(n_reads):
+	####	for j in range(i+1,n_reads):
+	####		y = np.zeros(2*max_tlen - 1)
+	####		for k in range(n_colors):
+	####			y += np.correlate(my_color_dat[i][k,:], my_color_dat[j][k,:], 'full')
+	####		best_offset = posmax(y) - (max_tlen-1)
+	####		all_adj[i,j] = best_offset
+	####		all_adj[j,i] = best_offset
+	####		print('AHH', i, j, posmax(y), int(y[posmax(y)]), best_offset)
+	####		hamming = 0
+	####		denom   = 0
+	####		for k in range(max_tlen):
+	####			if k-best_offset >= max_tlen:
+	####				break
+	####			if my_col_single[i][k] != 0 and my_col_single[j][k-best_offset] != 0:
+	####				if my_col_single[i][k] != my_col_single[j][k-best_offset]:
+	####					hamming += 1
+	####				denom += 1
+	####		hamming_norm = float(hamming)/denom
+	####		print('HAMMING:', hamming, hamming_norm)
+	####		dist_matrix[i,j] = hamming_norm
+	####		dist_matrix[j,i] = hamming_norm
+	####		####x = list(range(len(y)))
+	####		####fig = mpl.figure(3)
+	####		####mpl.plot(x,y)
+	####		####mpl.title(str(i) + ' ' + str(j))
+	####		####mpl.show()
+	####		####mpl.close(fig)
+	#####
+	####dist_array = squareform(dist_matrix)
+	####Zread      = linkage(dist_array, method='average')
+	####print(Zread)
+	####fig = mpl.figure(3)
+	####dendrogram(Zread)
+	####mpl.title(str(i) + ' ' + str(j))
+	####mpl.show()
+	####mpl.close(fig)
+	#
+	#
+	# plotting
+	#
+	fig = mpl.figure(1, figsize=(15,8))
+	for i in range(n_reads):
+		[my_kmer_hits, my_tlen, my_orr, my_rname] = kmer_dat[i]
+		if i == 0:
+			ax1 = mpl.subplot(n_reads, 1, i+1)
+			mpl.setp(ax1.get_xticklabels(), visible=False)
+			mpl.title(my_chr)
 		else:
-			ylab.append(str(abs(n)//1000) + 'k')
+			ax2 = mpl.subplot(n_reads, 1, i+1, sharex=ax1)
+			if i < n_reads-1:
+				mpl.setp(ax2.get_xticklabels(), visible=False)
+		#
+		for ki in range(len(my_kmer_hits)):
+			if len(my_kmer_hits[ki]):
+				if which_tel == 'p':
+					adj = max_tlen - my_tlen
+				else:
+					adj = 0
+				#adj += all_adj[8][i]
+				polygons = []
+				p_color  = []
+				p_alpha  = []
+				for kmer_span in my_kmer_hits[ki]:
+					xp = [kmer_span[0]+adj, kmer_span[1]+adj]
+					yp = [-1, 1]
+					polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+					p_color.append(kmer_colors[ki])
+					p_alpha.append(0.7)
+				#
+				ax = mpl.gca()
+				for j in range(len(polygons)):
+					ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
+				#
+		mpl.yticks([],[])
+		mpl.ylim([-1,1])
 	#
-	ref_2_x = {'chr'+xlab[i]:xtck[i] for i in range(len(xlab))}
-	ref_2_x['unanchored'] = xtck[0]
-	ref_2_x['unanchore']  = xtck[0]
-	#
-	v_line_keys     = ['cmeans', 'cmins', 'cmaxes', 'cbars', 'cmedians', 'cquantiles']
-	if len(tel_len_dict):
-		readcount_denom = max([len(tel_len_dict[k]) for k in tel_len_dict.keys() if k != 'unanchored'])
+	mpl.xlim([0, max_tlen])
+	if which_tel == 'p':
+		xtt = [max_tlen]
+		xtl = [0]
+		while xtt[-1] > X_STEP:
+			xtt.append(xtt[-1] - X_STEP)
+			xtl.append(xtl[-1] - X_STEP)
+		mpl.xticks(xtt, xtl)
 	else:
-		readcount_denom = 1
-	width_max       = 1.0
-	width_min       = 0.1
-	#
-	# read in lengths and create data structures needed for violin plot
-	#
-	(dat_l_p, dat_l_q) = ([], [])
-	(dat_p_p, dat_p_q) = ([], [])
-	(dat_w_p, dat_w_q) = ([], [])
-	for k in tel_len_dict.keys():
-		if len(tel_len_dict[k]) == 0:
-			continue
-		my_width = min( [width_max, max([width_min, width_max*(float(len(tel_len_dict[k]))/readcount_denom)])] )
-		if k[-1] == 'p' or k == 'unanchored':
-			dat_p_p.append(ref_2_x[k[:-1]])
-			dat_l_p.append([])
-			dat_w_p.append(my_width)
-		elif k[-1] == 'q':
-			dat_p_q.append(ref_2_x[k[:-1]])
-			dat_l_q.append([])
-			dat_w_q.append(my_width)
-		for n in tel_len_dict[k]:
-			if k[-1] == 'p' or k == 'unanchored':
-				dat_l_p[-1].append(n)
-			elif k[-1] == 'q':
-				dat_l_q[-1].append(-n)
-	#
-	# violin plot
-	#
-	fig = mpl.figure(1,figsize=(16,6))
+		xtt = range(0,max_tlen,X_STEP)
+		mpl.xticks(xtt, xtt)
+	mpl.xlabel('distance from subtelomere/telomere boundary (bp)')
+	mpl.tight_layout()
+	mpl.subplots_adjust(hspace=0.0)
+	mpl.show()
+	exit(1)
+	mpl.savefig(fig_name)
+	mpl.close(fig)
+	#if my_chr == 'chr3q':
+	#	exit(1)
+
+#
+#
+#
+def violin_plotting(dat_p_p, dat_l_p, dat_w_p, dat_p_q, dat_l_q, dat_w_q, plot_params, plot_means=True):
+	v_line_keys = ['cmeans', 'cmins', 'cmaxes', 'cbars', 'cmedians', 'cquantiles']
 	#
 	if len(dat_l_p) and len(dat_p_p):
 		violin_parts_p = mpl.violinplot(dat_l_p, dat_p_p, points=200, widths=dat_w_p)
@@ -252,6 +330,77 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 			yval = np.mean(dat_l_q[i])
 			xval = dat_p_q[i]
 			mpl.plot([xval - 0.3, xval + 0.3], [yval, yval], '-k', linewidth=2, alpha=0.4)
+
+#
+#
+#
+def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict={}, custom_plot_params={}):
+	#
+	# plotting constants
+	#
+	mpl.rcParams.update({'font.size': 18, 'font.weight':'bold'})
+	plot_params = {'p_color':'blue',
+	               'q_color':'red',
+	               'xlabel_rot':0,
+	               'y_label':'<-- q   telomere length   p -->',
+	               'p_ymax':20000,
+	               'q_ymax':20000,
+	               'y_step':5000,
+	               'fig_size':(16,6)}
+	for k in custom_plot_params.keys():
+		plot_params[k] = custom_plot_params[k]
+	#
+	xlab = ['-'] + [str(n) for n in range(1,22+1)] + ['X', 'Y']
+	xtck = list(range(1,len(xlab)+1))
+	ydel = plot_params['y_step']
+	(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
+	ytck = list(range(-q_ymax, p_ymax+ydel, ydel))
+	ylab = []
+	for n in ytck:
+		if n == 0:
+			ylab.append('')
+		else:
+			ylab.append(str(abs(n)//1000) + 'k')
+	#
+	ref_2_x = {'chr'+xlab[i]:xtck[i] for i in range(len(xlab))}
+	ref_2_x['unanchored'] = xtck[0]
+	ref_2_x['unanchore']  = xtck[0]
+	#
+	if len(tel_len_dict):
+		readcount_denom = max([len(tel_len_dict[k]) for k in tel_len_dict.keys() if k != 'unanchored'])
+	else:
+		readcount_denom = 1
+	width_max = 1.0
+	width_min = 0.1
+	#
+	# read in lengths and create data structures needed for violin plot
+	#
+	(dat_l_p, dat_l_q) = ([], [])
+	(dat_p_p, dat_p_q) = ([], [])
+	(dat_w_p, dat_w_q) = ([], [])
+	for k in tel_len_dict.keys():
+		if len(tel_len_dict[k]) == 0:
+			continue
+		my_width = min( [width_max, max([width_min, width_max*(float(len(tel_len_dict[k]))/readcount_denom)])] )
+		if k[-1] == 'p' or k == 'unanchored':
+			dat_p_p.append(ref_2_x[k[:-1]])
+			dat_l_p.append([])
+			dat_w_p.append(my_width)
+		elif k[-1] == 'q':
+			dat_p_q.append(ref_2_x[k[:-1]])
+			dat_l_q.append([])
+			dat_w_q.append(my_width)
+		for n in tel_len_dict[k]:
+			if k[-1] == 'p' or k == 'unanchored':
+				dat_l_p[-1].append(n)
+			elif k[-1] == 'q':
+				dat_l_q[-1].append(-n)
+	#
+	# violin plot
+	#
+	fig = mpl.figure(1,figsize=plot_params['fig_size'])
+	#
+	violin_plotting(dat_p_p, dat_l_p, dat_w_p, dat_p_q, dat_l_q, dat_w_q, plot_params, plot_means)
 	#
 	# plot ground-truth values (for simulated data)
 	#
@@ -266,10 +415,105 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 			continue
 		mpl.plot([xval - 0.35, xval + 0.35], [yval, yval], '-k', linewidth=3, alpha=1.0)
 	#
-	# plot formatting and output
+	mpl.plot([0,len(xlab)+1], [0,0], '-k', linewidth=3)
+	mpl.xticks(xtck, xlab, rotation=plot_params['xlabel_rot'])
+	mpl.xlim([0,len(xlab)+1])
+	mpl.yticks(ytck, ylab)
+	mpl.ylim([-q_ymax, p_ymax])
+	mpl.ylabel(plot_params['y_label'])
+	mpl.grid(linestyle='--', alpha=0.5)
+	mpl.tight_layout()
+	mpl.savefig(out_fn)
+	mpl.close(fig)
+
+#
+# tel_len_by_samp[i] = (samp_name, 'p'/'q', tlen_list)
+#
+# ground_truth_by_samp[i] = (samp_name, 'p'/'q', tlen)
+#
+def tel_len_violin_single_chr_multiple_samples(tel_len_by_samp, out_fn, plot_means=True, ground_truth_by_samp=[], custom_plot_params={}):
+	#
+	# plotting constants
+	#
+	mpl.rcParams.update({'font.size': 18, 'font.weight':'bold'})
+	plot_params = {'p_color':'blue',
+	               'q_color':'red',
+	               'xlabel_rot':0,
+	               'y_label':'<-- q   telomere length   p -->',
+	               'p_ymax':20000,
+	               'q_ymax':20000,
+	               'y_step':5000,
+	               'fig_size':(16,6)}
+	for k in custom_plot_params.keys():
+		plot_params[k] = custom_plot_params[k]
+	#
+	xlab = []
+	for n in tel_len_by_samp:
+		if n[0] not in xlab:
+			xlab.append(n[0])
+	xtck = list(range(1,len(xlab)+1))
+	ydel = plot_params['y_step']
+	(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
+	ytck = list(range(-q_ymax, p_ymax+ydel, ydel))
+	ylab = []
+	for n in ytck:
+		if n == 0:
+			ylab.append('')
+		else:
+			ylab.append(str(abs(n)//1000) + 'k')
+	#
+	samp_2_x = {xlab[i]:xtck[i] for i in range(len(xlab))}
+	#
+	if len(tel_len_by_samp):
+		readcount_denom = max([len(n[2]) for n in tel_len_by_samp])
+	else:
+		readcount_denom = 1
+	width_max = 1.0
+	width_min = 0.1
+	#
+	# read in lengths and create data structures needed for violin plot
+	#
+	(dat_l_p, dat_l_q) = ([], [])
+	(dat_p_p, dat_p_q) = ([], [])
+	(dat_w_p, dat_w_q) = ([], [])
+	for (samp_name, pq, tlen_list) in tel_len_by_samp:
+		if len(tlen_list) == 0:
+			continue
+		my_width = min( [width_max, max([width_min, width_max*(float(len(tlen_list))/readcount_denom)])] )
+		if pq == 'p':
+			dat_p_p.append(samp_2_x[samp_name])
+			dat_l_p.append([])
+			dat_w_p.append(my_width)
+		elif pq == 'q':
+			dat_p_q.append(samp_2_x[samp_name])
+			dat_l_q.append([])
+			dat_w_q.append(my_width)
+		for n in tlen_list:
+			if pq == 'p':
+				dat_l_p[-1].append(n)
+			elif pq == 'q':
+				dat_l_q[-1].append(-n)
+	#
+	# violin plot
+	#
+	fig = mpl.figure(1,figsize=plot_params['fig_size'])
+	#
+	violin_plotting(dat_p_p, dat_l_p, dat_w_p, dat_p_q, dat_l_q, dat_w_q, plot_params, plot_means)
+	#
+	# use the ground-truth plotting function to compare against other tl methods (e.g. denovo assembly)
+	#
+	for i in range(len(ground_truth_by_samp)):
+		xval = samp_2_x[ground_truth_by_samp[i][0]]
+		if ground_truth_by_samp[i][1] == 'p':
+			yval = ground_truth_by_samp[i][2]
+		elif ground_truth_by_samp[i][1] == 'q':
+			yval = -ground_truth_by_samp[i][2]
+		else:
+			continue
+		mpl.plot([xval - 0.35, xval + 0.35], [yval, yval], '-k', linewidth=2, alpha=1.0)
 	#
 	mpl.plot([0,len(xlab)+1], [0,0], '-k', linewidth=3)
-	mpl.xticks(xtck, xlab)
+	mpl.xticks(xtck, xlab, rotation=plot_params['xlabel_rot'])
 	mpl.xlim([0,len(xlab)+1])
 	mpl.yticks(ytck, ylab)
 	mpl.ylim([-q_ymax, p_ymax])

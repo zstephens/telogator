@@ -2,12 +2,14 @@ import argparse
 import bisect
 import copy
 import os
+import pathlib
 import pickle
+import re
 import sys
 
 import numpy as np
 
-from source.tg_plot import tel_len_violin_plot, anchor_confusion_matrix
+from source.tg_plot import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
 from source.tg_util import RC, cluster_list, LEXICO_2_IND
 
 #
@@ -19,17 +21,19 @@ DUMMY_TEL_MAPQ = 60
 
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='merge_jobs.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
-	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/', help="* Path to telogator results directory")
-	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',     help="Method for computing TL (mean/median/max/p90)")
-	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',    help="Maximum distance apart to cluster anchor positions")
-	parser.add_argument('-cr', type=int, required=False, default=2,      metavar='[2]',       help="Minimum number of reads per cluster")
-	parser.add_argument('-th', type=int, required=False, default=0,      metavar='[0]',       help="TelomereHunter tel_content (for comparison)")
-	parser.add_argument('-gt', type=str, required=False, default='',     metavar='tlens.tsv', help="Ground truth tel lens (for comparison)")
-	parser.add_argument('-rl', type=int, required=False, default=50000,  metavar='[50000]',   help="Maximum y-axis value for readlength violin plots")
+	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/',      help="* Path to telogator results directory")
+	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',          help="Method for computing TL (mean/median/max/p90)")
+	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
+	parser.add_argument('-cr', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
+	parser.add_argument('-th', type=int, required=False, default=0,      metavar='[0]',            help="TelomereHunter tel_content (for comparison)")
+	parser.add_argument('-gt', type=str, required=False, default='',     metavar='tlens.tsv',      help="Ground truth tel lens (for comparison)")
+	parser.add_argument('-rl', type=int, required=False, default=50000,  metavar='[50000]',        help="Maximum y-axis value for readlength violin plots")
+	parser.add_argument('-k',  type=str, required=False, default='',     metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
 	#
-	parser.add_argument('--pbsim',               required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
-	parser.add_argument('--extra-tlen-plots',    required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
-	parser.add_argument('--extra-readlen-plots', required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
+	parser.add_argument('--pbsim',                 required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
+	parser.add_argument('--tel-composition-plots', required=False, default=False,  action='store_true', help='Produce telomere sequence composition plots')
+	parser.add_argument('--extra-tlen-plots',      required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
+	parser.add_argument('--extra-readlen-plots',   required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
 	args = parser.parse_args()
 
 	IN_DIR = args.i
@@ -61,15 +65,65 @@ def main(raw_args=None):
 	READLEN_VIOLIN_06 = IN_DIR + 'readlens_violin_06_chr-filt.png'
 	READLEN_VIOLIN_07 = IN_DIR + 'readlens_violin_07_alt-pass.png'
 	READLEN_VIOLIN_08 = IN_DIR + 'readlens_violin_08_alt-filt.png'
+	#
+	TEL_SEQUENCES_FASTA = IN_DIR + 'tel-sequences.fa'
+	SUB_SEQUENCES_FASTA = IN_DIR + 'sub-sequences.fa'
 
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.cr
 	READS_ARE_PBSIM     = args.pbsim
 	TEL_HUNTER_AVG      = args.th
 	GROUND_TRUTH_TLENS  = args.gt
+	TEL_SEQ_PLOTS       = args.tel_composition_plots
 	EXTRA_TLEN_PLOTS    = args.extra_tlen_plots
 	EXTRA_READLEN_PLOTS = args.extra_readlen_plots
 	EXTRA_READLEN_YMAX  = args.rl
+
+	KMER_FILE   = args.k
+	KMER_LIST   = []
+	KMER_COLORS = []
+	if KMER_FILE == '':
+		print('using default telomere kmers.')
+		sim_path = pathlib.Path(__file__).resolve().parent
+		kmer_fn  = str(sim_path) + '/resources/plot_kmers.tsv'
+		f = open(kmer_fn,'r')
+		rev_kmers  = []
+		rev_colors = []
+		for line in f:
+			splt = line.strip().split('\t')
+			KMER_LIST.append(splt[1])
+			KMER_COLORS.append(splt[2])
+			rev_kmers.append(RC(splt[1]))
+			rev_colors.append(splt[2])
+		f.close()
+		KMER_LIST.extend([n for n in rev_kmers])
+		KMER_COLORS.extend([n for n in rev_colors])
+	else:
+		fn_suffix = KMER_FILE.split('/')[-1]
+		print('using user-specified kmer list:', fn_suffix)
+		if exists_and_is_nonzero(KMER_FILE):
+			f = open(KMER_FILE,'r')
+			for line in f:
+				splt = line.strip().split('\t')
+				KMER_LIST.append(splt[1])
+				KMER_COLORS.append(splt[2])
+				rev_kmers.append(RC(splt[1]))
+				rev_colors.append(splt[2])
+			f.close()
+			KMER_LIST.extend([n for n in rev_kmers])
+			KMER_COLORS.extend([n for n in rev_colors])
+		else:
+			print('Error: kmer list not found')
+			exit(1)
+	sorted_kmer_dat  = sorted([(len(KMER_LIST[n]),KMER_LIST[n],KMER_COLORS[n]) for n in range(len(KMER_LIST))], reverse=True)	# sort by length
+	KMER_LIST        = [n[1] for n in sorted_kmer_dat]
+	KMER_COLORS      = [n[2] for n in sorted_kmer_dat]
+	KMER_ISSUBSTRING = []
+	for i in range(len(KMER_LIST)):
+		KMER_ISSUBSTRING.append([j for j in range(len(KMER_LIST)) if (j != i and KMER_LIST[i] in KMER_LIST[j])])
+	####for i in range(len(KMER_LIST)):
+	####	print(i, KMER_LIST[i], KMER_COLORS[i], KMER_ISSUBSTRING[i])
+	####exit(1)
 
 	gt_tlen = {}
 	if len(GROUND_TRUTH_TLENS):
@@ -229,7 +283,14 @@ def main(raw_args=None):
 	#
 	f_out = open(OUT_TSV, 'w')
 	f_out.write('#subtel' + '\t' + 'position' + '\t' + 'tel_len_' + TL_METHOD + '\t' + 'tel_lens' + '\t' + 'read_lens' + '\n')
+	#
+	f_telfasta = open(TEL_SEQUENCES_FASTA, 'w')
+	f_subfasta = open(SUB_SEQUENCES_FASTA, 'w')
+	#
+	unexplained_telseq_dict = {}
+	#
 	comp_data = []
+	clust_num = 0
 	for ki in range(len(sorted_ref_keys)):
 		k = sorted_ref_keys[ki][3]
 		#
@@ -243,10 +304,11 @@ def main(raw_args=None):
 		sort_list = sorted([(COMBINED_ANCHORS[k][n][1], n) for n in range(len(COMBINED_ANCHORS[k]))])
 		clusters  = cluster_list(sort_list, ANCHOR_CLUSTER_DIST, which_val=0)
 		for cl in clusters:
-
-			pos_list  = [n[0] for n in cl]
-			ind_list  = [n[1] for n in cl]
-			my_pos    = int(np.mean(pos_list))
+			#
+			clust_num += 1
+			pos_list   = [n[0] for n in cl]
+			ind_list   = [n[1] for n in cl]
+			my_pos     = int(np.mean(pos_list))
 			#
 			#my_rnames = [COMBINED_ANCHORS[k][i][0] for i in ind_list]
 			#my_tlens  = [COMBINED_ANCHORS[k][i][3] for i in ind_list]
@@ -277,6 +339,9 @@ def main(raw_args=None):
 			if len(cl) < MIN_READS_PER_CLUST:
 				continue
 
+			#
+			# output combined data for easier reprocessing if desired
+			#
 			for i in ind_list:
 				my_rnm  = COMBINED_ANCHORS[k][i][0]
 				my_rdat = COMBINED_ANCHORS[k][i][6]
@@ -313,7 +378,113 @@ def main(raw_args=None):
 			f_out.write(sorted_ref_keys[ki][3] + '\t' + str(my_pos) + '\t' + str(int(consensus_tl)) + '\t' + ','.join([str(n) for n in my_tlens]) + '\t' + ','.join([str(n) for n in my_rlens]) + '\n')
 			#
 			comp_data.append([sorted_ref_keys[ki][3], my_pos, [n for n in my_tlens]])
+
+			#
+			# plot kmer composition of telomeres in this cluster
+			#
+			if TEL_SEQ_PLOTS:
+				kmer_hit_dat = []
+				for i in ind_list:
+					my_rnm  = COMBINED_ANCHORS[k][i][0]
+					my_tlen = COMBINED_ANCHORS[k][i][3]
+					my_type = COMBINED_ANCHORS[k][i][4]
+					my_rdat = COMBINED_ANCHORS[k][i][6]
+					my_alns = COMBINED_ANCHORS[k][i][7]
+					#print('OUTPUT TEL FASTA:', my_chr, COMBINED_ANCHORS[k][i][:6])
+					if my_chr[-1] == 'p':
+						if my_type == 'p':
+							my_telseq = my_rdat[:my_tlen]
+							my_subseq = my_rdat[my_tlen:]
+						elif my_type == 'q':
+							my_telseq = RC(my_rdat[-my_tlen:])
+							my_subseq = RC(my_rdat[:-my_tlen])
+					elif my_chr[-1] == 'q':
+						if my_type == 'p':
+							my_telseq = RC(my_rdat[:my_tlen])
+							my_subseq = RC(my_rdat[my_tlen:])
+						elif my_type == 'q':
+							my_telseq = my_rdat[-my_tlen:]
+							my_subseq = my_rdat[:-my_tlen]
+					out_readname = 'cluster-' + str(clust_num) + '_ref-' + my_chr + '_tel-' + my_type + '_' + my_rnm
+					f_telfasta.write('>' + out_readname + '\n')
+					f_telfasta.write(my_telseq + '\n')
+					out_readname = 'cluster-' + str(clust_num) + '_ref-' + my_chr + '_sub-' + my_type + '_' + my_rnm
+					f_subfasta.write('>' + out_readname + '\n')
+					f_subfasta.write(my_subseq + '\n')
+					#
+					kmer_hit_dat.append([[], my_tlen, my_type, my_rnm])	# kmer_hit_dat[-1][0][ki] = hits in current read for kmer ki
+					coord_hit_dict = []	# this is sloppy but easy
+					coord_hit_all  = np.zeros(my_tlen)
+					for ki in range(len(KMER_LIST)):
+						# get all hits
+						raw_hits = [(n.start(0), n.end(0)) for n in re.finditer(KMER_LIST[ki], my_telseq)]
+						coord_hit_dict.append({})
+						for kmer_span in raw_hits:
+							for j in range(kmer_span[0],kmer_span[1]):
+								coord_hit_dict[-1][j] = True
+								coord_hit_all[j]      = 1
+						kmer_hit_dat[-1][0].append([n for n in raw_hits])
+					#
+					# remove hits of kmers that overlap with a hit from any of their superstrings
+					#
+					for ki in range(len(KMER_LIST)):
+						del_list = []
+						for ksi in range(len(kmer_hit_dat[-1][0][ki])):
+							kmer_span = kmer_hit_dat[-1][0][ki][ksi]
+							are_we_hit = False
+							for sub_i in KMER_ISSUBSTRING[ki]:
+								for j in range(kmer_span[0], kmer_span[1]):
+									if j in coord_hit_dict[sub_i]:
+										are_we_hit = True
+										break
+								if are_we_hit:
+									break
+							if are_we_hit:
+								del_list.append(ksi)
+						before_del_len = len(kmer_hit_dat[-1][0][ki])
+						for di in sorted(del_list, reverse=True):
+							del kmer_hit_dat[-1][0][ki][di]
+						#print(ki, KMER_LIST[ki], KMER_ISSUBSTRING[ki], before_del_len, '-->', len(kmer_hit_dat[-1][0][ki]))
+					#
+					# collapse adjacent hits into larger blocks (so we have less polygons to plot)
+					#
+					for ki in range(len(KMER_LIST)):
+						collapsed_kmer_spans = [[n[0],n[1]] for n in kmer_hit_dat[-1][0][ki]]
+						for j in range(len(collapsed_kmer_spans)-1,0,-1):
+							if collapsed_kmer_spans[j-1][1] == collapsed_kmer_spans[j][0]:
+								collapsed_kmer_spans[j-1][1] = collapsed_kmer_spans[j][1]
+								del collapsed_kmer_spans[j]
+						kmer_hit_dat[-1][0][ki] = [n for n in collapsed_kmer_spans]
+						#print(kmer_hit_dat[-1][0][ki])
+					#
+					# what are the unexplained sequences?
+					#
+					unexplained_regions = []
+					for j in range(my_tlen):
+						if coord_hit_all[j] == 0:
+							unexplained_regions.append([j,j+1])
+					for j in range(len(unexplained_regions)-1,0,-1):
+						if unexplained_regions[j-1][1] == unexplained_regions[j][0]:
+							unexplained_regions[j-1][1] = unexplained_regions[j][1]
+							del unexplained_regions[j]
+					for j in range(len(unexplained_regions)):
+						ur = unexplained_regions[j]
+						us = my_telseq[ur[0]:ur[1]]
+						if us not in unexplained_telseq_dict:
+							unexplained_telseq_dict[us] = 0
+						unexplained_telseq_dict[us] += 1
+				#
+				if k[:3] == 'alt':
+					plotname_chr = 'alt-' + my_chr
+				else:
+					plotname_chr = my_chr
+				plot_fn = IN_DIR + 'tel-composition-plot_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
+				plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn)
+			#
 		print()
+	#
+	f_subfasta.close()
+	f_telfasta.close()
 	f_out.close()
 
 	#
@@ -363,6 +534,14 @@ def main(raw_args=None):
 
 	if READS_ARE_PBSIM:
 		anchor_confusion_matrix(CONF_DAT, CONFUSION_PLOT)
+
+	if TEL_SEQ_PLOTS:
+		skus = sorted([(unexplained_telseq_dict[k],k) for k in unexplained_telseq_dict.keys()], reverse=True)
+		print('unexplained tel regions:')
+		for n in skus:
+			if n[0] >= 2:
+				print(n[0], n[1])
+		print('')
 
 	#
 	if TEL_HUNTER_AVG > 0 and len(comp_data):
