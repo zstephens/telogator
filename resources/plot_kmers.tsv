@@ -11,6 +11,7 @@ p	CCCAA	darkgreen
 p	CCCA	darkgreen
 p	CCAA	darkgreen
 p	CCCTCA	yellow
+p	CCCTCG	yellow
 p	CCCTCTAA	khaki
 p	CCCTGA	red
 p	CCCGAA	darkred
@@ -18,3 +19,4 @@ p	CCCGA	darkred
 p	CCTAG	orange
 p	CCCTTA	darkviolet
 p	CCCTTAA	darkviolet
+p	CCCCCC	gray

@@ -10,7 +10,7 @@ import sys
 import numpy as np
 
 from source.tg_plot import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
-from source.tg_util import RC, cluster_list, LEXICO_2_IND
+from source.tg_util import RC, cluster_list, LEXICO_2_IND, exists_and_is_nonzero
 
 #
 MIN_DOUBLE_ANCHOR_LEN   = 1000
@@ -82,13 +82,13 @@ def main(raw_args=None):
 	KMER_FILE   = args.k
 	KMER_LIST   = []
 	KMER_COLORS = []
+	rev_kmers   = []
+	rev_colors  = []
 	if KMER_FILE == '':
 		print('using default telomere kmers.')
 		sim_path = pathlib.Path(__file__).resolve().parent
 		kmer_fn  = str(sim_path) + '/resources/plot_kmers.tsv'
 		f = open(kmer_fn,'r')
-		rev_kmers  = []
-		rev_colors = []
 		for line in f:
 			splt = line.strip().split('\t')
 			KMER_LIST.append(splt[1])
@@ -412,12 +412,12 @@ def main(raw_args=None):
 					f_subfasta.write('>' + out_readname + '\n')
 					f_subfasta.write(my_subseq + '\n')
 					#
-					kmer_hit_dat.append([[], my_tlen, my_type, my_rnm])	# kmer_hit_dat[-1][0][ki] = hits in current read for kmer ki
+					kmer_hit_dat.append([[], my_tlen, my_type, my_rnm])	# kmer_hit_dat[-1][0][kmer_list_i] = hits in current read for kmer kmer_list_i
 					coord_hit_dict = []	# this is sloppy but easy
 					coord_hit_all  = np.zeros(my_tlen)
-					for ki in range(len(KMER_LIST)):
+					for kmer_list_i in range(len(KMER_LIST)):
 						# get all hits
-						raw_hits = [(n.start(0), n.end(0)) for n in re.finditer(KMER_LIST[ki], my_telseq)]
+						raw_hits = [(n.start(0), n.end(0)) for n in re.finditer(KMER_LIST[kmer_list_i], my_telseq)]
 						coord_hit_dict.append({})
 						for kmer_span in raw_hits:
 							for j in range(kmer_span[0],kmer_span[1]):
@@ -427,12 +427,12 @@ def main(raw_args=None):
 					#
 					# remove hits of kmers that overlap with a hit from any of their superstrings
 					#
-					for ki in range(len(KMER_LIST)):
+					for kmer_list_i in range(len(KMER_LIST)):
 						del_list = []
-						for ksi in range(len(kmer_hit_dat[-1][0][ki])):
-							kmer_span = kmer_hit_dat[-1][0][ki][ksi]
+						for ksi in range(len(kmer_hit_dat[-1][0][kmer_list_i])):
+							kmer_span = kmer_hit_dat[-1][0][kmer_list_i][ksi]
 							are_we_hit = False
-							for sub_i in KMER_ISSUBSTRING[ki]:
+							for sub_i in KMER_ISSUBSTRING[kmer_list_i]:
 								for j in range(kmer_span[0], kmer_span[1]):
 									if j in coord_hit_dict[sub_i]:
 										are_we_hit = True
@@ -441,21 +441,21 @@ def main(raw_args=None):
 									break
 							if are_we_hit:
 								del_list.append(ksi)
-						before_del_len = len(kmer_hit_dat[-1][0][ki])
+						before_del_len = len(kmer_hit_dat[-1][0][kmer_list_i])
 						for di in sorted(del_list, reverse=True):
-							del kmer_hit_dat[-1][0][ki][di]
-						#print(ki, KMER_LIST[ki], KMER_ISSUBSTRING[ki], before_del_len, '-->', len(kmer_hit_dat[-1][0][ki]))
+							del kmer_hit_dat[-1][0][kmer_list_i][di]
+						#print(kmer_list_i, KMER_LIST[kmer_list_i], KMER_ISSUBSTRING[kmer_list_i], before_del_len, '-->', len(kmer_hit_dat[-1][0][kmer_list_i]))
 					#
 					# collapse adjacent hits into larger blocks (so we have less polygons to plot)
 					#
-					for ki in range(len(KMER_LIST)):
-						collapsed_kmer_spans = [[n[0],n[1]] for n in kmer_hit_dat[-1][0][ki]]
+					for kmer_list_i in range(len(KMER_LIST)):
+						collapsed_kmer_spans = [[n[0],n[1]] for n in kmer_hit_dat[-1][0][kmer_list_i]]
 						for j in range(len(collapsed_kmer_spans)-1,0,-1):
 							if collapsed_kmer_spans[j-1][1] == collapsed_kmer_spans[j][0]:
 								collapsed_kmer_spans[j-1][1] = collapsed_kmer_spans[j][1]
 								del collapsed_kmer_spans[j]
-						kmer_hit_dat[-1][0][ki] = [n for n in collapsed_kmer_spans]
-						#print(kmer_hit_dat[-1][0][ki])
+						kmer_hit_dat[-1][0][kmer_list_i] = [n for n in collapsed_kmer_spans]
+						#print(kmer_hit_dat[-1][0][kmer_list_i])
 					#
 					# what are the unexplained sequences?
 					#

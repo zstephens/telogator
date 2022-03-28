@@ -284,8 +284,8 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name):
 	mpl.xlabel('distance from subtelomere/telomere boundary (bp)')
 	mpl.tight_layout()
 	mpl.subplots_adjust(hspace=0.0)
-	mpl.show()
-	exit(1)
+	#mpl.show()
+	#exit(1)
 	mpl.savefig(fig_name)
 	mpl.close(fig)
 	#if my_chr == 'chr3q':
