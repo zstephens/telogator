@@ -5,7 +5,7 @@ import argparse
 from source.tg_reader import TG_Reader
 from source.tg_util import exists_and_is_nonzero
 
-def strip_polymerase_coords(rn):
+def get_clr_readname(rn):
 	return '/'.join(rn.split('/')[:-1])
 
 def get_sra_readname(rn):
@@ -73,7 +73,7 @@ def main(raw_args=None):
 	f = open(TEMP_READNAMES, 'r')
 	for line in f:
 		if READTYPE == 'CLR':
-			rn_dict[strip_polymerase_coords(line.strip())] = True
+			rn_dict[get_clr_readname(line.strip())] = True
 		elif READTYPE == 'SRA':
 			rn_dict[get_sra_readname(line.strip())] = True
 		elif READTYPE == 'CCS':
@@ -94,7 +94,7 @@ def main(raw_args=None):
 		(my_name, my_rdat, my_qdat) = my_reader.get_next_read()
 		if not my_name:
 			break
-		got_hits = [(READTYPE == 'CLR' and strip_polymerase_coords(my_name)),
+		got_hits = [(READTYPE == 'CLR' and get_clr_readname(my_name) in rn_dict),
 		            (READTYPE == 'SRA' and get_sra_readname(my_name) in rn_dict),
 		            (READTYPE == 'CCS' and get_ccs_readname(my_name) in rn_dict)]
 		if any(got_hits):
