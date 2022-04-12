@@ -151,3 +151,50 @@ def sample_telomere(trans_dist_dict, length, tel_type='p', init_string='TAACCC')
 	else:
 		print('Error: unknown tel type in sample_telomere()')
 		exit(1)
+
+#
+#
+def get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING):
+	out_dat = []
+	coord_hit_dict = []
+	for kmer_list_i in range(len(KMER_LIST)):
+		# get all hits
+		raw_hits = [(n.start(0), n.end(0)) for n in re.finditer(KMER_LIST[kmer_list_i], my_telseq)]
+		coord_hit_dict.append({})
+		for kmer_span in raw_hits:
+			for j in range(kmer_span[0],kmer_span[1]):
+				coord_hit_dict[-1][j] = True
+		out_dat.append([n for n in raw_hits])
+	#
+	# remove hits of kmers that overlap with a hit from any of their superstrings
+	#
+	for kmer_list_i in range(len(KMER_LIST)):
+		del_list = []
+		for ksi in range(len(out_dat[kmer_list_i])):
+			kmer_span = out_dat[kmer_list_i][ksi]
+			are_we_hit = False
+			for sub_i in KMER_ISSUBSTRING[kmer_list_i]:
+				for j in range(kmer_span[0], kmer_span[1]):
+					if j in coord_hit_dict[sub_i]:
+						are_we_hit = True
+						break
+				if are_we_hit:
+					break
+			if are_we_hit:
+				del_list.append(ksi)
+		before_del_len = len(out_dat[kmer_list_i])
+		for di in sorted(del_list, reverse=True):
+			del out_dat[kmer_list_i][di]
+	#
+	# collapse adjacent hits into larger blocks (so we have less polygons to plot)
+	#
+	for kmer_list_i in range(len(KMER_LIST)):
+		collapsed_kmer_spans = [[n[0],n[1]] for n in out_dat[kmer_list_i]]
+		for j in range(len(collapsed_kmer_spans)-1,0,-1):
+			if collapsed_kmer_spans[j-1][1] == collapsed_kmer_spans[j][0]:
+				collapsed_kmer_spans[j-1][1] = collapsed_kmer_spans[j][1]
+				del collapsed_kmer_spans[j]
+		out_dat[kmer_list_i] = [n for n in collapsed_kmer_spans]
+		#print(out_dat[kmer_list_i])
+	#
+	return out_dat

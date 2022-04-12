@@ -9,8 +9,10 @@ import sys
 
 import numpy as np
 
-from source.tg_plot import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
-from source.tg_util import RC, cluster_list, LEXICO_2_IND, exists_and_is_nonzero
+from source.tg_cluster import cluster_tel_sequences
+from source.tg_kmer    import get_nonoverlapping_kmer_hits
+from source.tg_plot    import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
+from source.tg_util    import RC, cluster_list, LEXICO_2_IND, exists_and_is_nonzero
 
 #
 MIN_DOUBLE_ANCHOR_LEN   = 1000
@@ -66,8 +68,9 @@ def main(raw_args=None):
 	READLEN_VIOLIN_07 = IN_DIR + 'readlens_violin_07_alt-pass.png'
 	READLEN_VIOLIN_08 = IN_DIR + 'readlens_violin_08_alt-filt.png'
 	#
-	TEL_SEQUENCES_FASTA = IN_DIR + 'tel-sequences.fa'
-	SUB_SEQUENCES_FASTA = IN_DIR + 'sub-sequences.fa'
+	TEL_SEQUENCES_FASTA  = IN_DIR + 'tel-sequences.fa'
+	SUB_SEQUENCES_FASTA  = IN_DIR + 'sub-sequences.fa'
+	READ_SEQUENCES_FASTA = IN_DIR + 'read-sequences.fa'
 
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.cr
@@ -219,7 +222,7 @@ def main(raw_args=None):
 		del_list = sorted(del_list, reverse=True)
 		for di in del_list:
 			del COMBINED_ANCHORS[k][di]
-		print(k, len_before_filtering, '-->', len(COMBINED_ANCHORS[k]))
+		#print(k, len_before_filtering, '-->', len(COMBINED_ANCHORS[k]))
 		if len(COMBINED_ANCHORS[k]) == 0:
 			del_keys.append(k)
 	for k in del_keys:
@@ -284,10 +287,15 @@ def main(raw_args=None):
 	f_out = open(OUT_TSV, 'w')
 	f_out.write('#subtel' + '\t' + 'position' + '\t' + 'tel_len_' + TL_METHOD + '\t' + 'tel_lens' + '\t' + 'read_lens' + '\n')
 	#
-	f_telfasta = open(TEL_SEQUENCES_FASTA, 'w')
-	f_subfasta = open(SUB_SEQUENCES_FASTA, 'w')
+	if TEL_SEQ_PLOTS:
+		f_telfasta = open(TEL_SEQUENCES_FASTA, 'w')
+		f_subfasta = open(SUB_SEQUENCES_FASTA, 'w')
+		f_entire   = open(READ_SEQUENCES_FASTA, 'w')
 	#
 	unexplained_telseq_dict = {}
+	#
+	len_by_read_tel = []
+	len_by_read_sub = []
 	#
 	comp_data = []
 	clust_num = 0
@@ -383,7 +391,7 @@ def main(raw_args=None):
 			# plot kmer composition of telomeres in this cluster
 			#
 			if TEL_SEQ_PLOTS:
-				kmer_hit_dat = []
+				kmer_hit_dat    = []
 				for i in ind_list:
 					my_rnm  = COMBINED_ANCHORS[k][i][0]
 					my_tlen = COMBINED_ANCHORS[k][i][3]
@@ -405,60 +413,32 @@ def main(raw_args=None):
 						elif my_type == 'q':
 							my_telseq = my_rdat[-my_tlen:]
 							my_subseq = my_rdat[:-my_tlen]
+					len_by_read_tel.append(len(my_telseq))
+					len_by_read_sub.append(len(my_subseq))
+					#
 					out_readname = 'cluster-' + str(clust_num) + '_ref-' + my_chr + '_tel-' + my_type + '_' + my_rnm
 					f_telfasta.write('>' + out_readname + '\n')
 					f_telfasta.write(my_telseq + '\n')
 					out_readname = 'cluster-' + str(clust_num) + '_ref-' + my_chr + '_sub-' + my_type + '_' + my_rnm
 					f_subfasta.write('>' + out_readname + '\n')
 					f_subfasta.write(my_subseq + '\n')
+					out_readname = my_rnm
+					f_entire.write('>' + out_readname + '\n')
+					f_entire.write(my_rdat + '\n')
 					#
-					kmer_hit_dat.append([[], my_tlen, my_type, my_rnm])	# kmer_hit_dat[-1][0][kmer_list_i] = hits in current read for kmer kmer_list_i
-					coord_hit_dict = []	# this is sloppy but easy
-					coord_hit_all  = np.zeros(my_tlen)
-					for kmer_list_i in range(len(KMER_LIST)):
-						# get all hits
-						raw_hits = [(n.start(0), n.end(0)) for n in re.finditer(KMER_LIST[kmer_list_i], my_telseq)]
-						coord_hit_dict.append({})
-						for kmer_span in raw_hits:
-							for j in range(kmer_span[0],kmer_span[1]):
-								coord_hit_dict[-1][j] = True
-								coord_hit_all[j]      = 1
-						kmer_hit_dat[-1][0].append([n for n in raw_hits])
+					# get kmer hits
 					#
-					# remove hits of kmers that overlap with a hit from any of their superstrings
+					# kmer_hit_dat[-1][0][kmer_list_i] = hits in current read for kmer kmer_list_i
 					#
-					for kmer_list_i in range(len(KMER_LIST)):
-						del_list = []
-						for ksi in range(len(kmer_hit_dat[-1][0][kmer_list_i])):
-							kmer_span = kmer_hit_dat[-1][0][kmer_list_i][ksi]
-							are_we_hit = False
-							for sub_i in KMER_ISSUBSTRING[kmer_list_i]:
-								for j in range(kmer_span[0], kmer_span[1]):
-									if j in coord_hit_dict[sub_i]:
-										are_we_hit = True
-										break
-								if are_we_hit:
-									break
-							if are_we_hit:
-								del_list.append(ksi)
-						before_del_len = len(kmer_hit_dat[-1][0][kmer_list_i])
-						for di in sorted(del_list, reverse=True):
-							del kmer_hit_dat[-1][0][kmer_list_i][di]
-						#print(kmer_list_i, KMER_LIST[kmer_list_i], KMER_ISSUBSTRING[kmer_list_i], before_del_len, '-->', len(kmer_hit_dat[-1][0][kmer_list_i]))
-					#
-					# collapse adjacent hits into larger blocks (so we have less polygons to plot)
-					#
-					for kmer_list_i in range(len(KMER_LIST)):
-						collapsed_kmer_spans = [[n[0],n[1]] for n in kmer_hit_dat[-1][0][kmer_list_i]]
-						for j in range(len(collapsed_kmer_spans)-1,0,-1):
-							if collapsed_kmer_spans[j-1][1] == collapsed_kmer_spans[j][0]:
-								collapsed_kmer_spans[j-1][1] = collapsed_kmer_spans[j][1]
-								del collapsed_kmer_spans[j]
-						kmer_hit_dat[-1][0][kmer_list_i] = [n for n in collapsed_kmer_spans]
-						#print(kmer_hit_dat[-1][0][kmer_list_i])
+					kmer_hit_dat.append([get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING), my_tlen, my_type, my_rnm])
 					#
 					# what are the unexplained sequences?
 					#
+					coord_hit_all = np.zeros(my_tlen)
+					for kmer_list_i in range(len(KMER_LIST)):
+						for kmer_span in kmer_hit_dat[-1][0][kmer_list_i]:
+							for j in range(kmer_span[0],kmer_span[1]):
+								coord_hit_all[j] = 1
 					unexplained_regions = []
 					for j in range(my_tlen):
 						if coord_hit_all[j] == 0:
@@ -474,17 +454,30 @@ def main(raw_args=None):
 							unexplained_telseq_dict[us] = 0
 						unexplained_telseq_dict[us] += 1
 				#
+				# plotting!
+				#
 				if k[:3] == 'alt':
 					plotname_chr = 'alt-' + my_chr
 				else:
 					plotname_chr = my_chr
-				plot_fn = IN_DIR + 'tel-composition-plot_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
-				plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn)
-			#
+				#####
+				####dendrogram_fn = IN_DIR + 'dendrogram_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
+				####read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, fig_name=dendrogram_fn)
+				#####
+				####plot_fn = IN_DIR + 'tel-composition-plot_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
+				####plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn, clust_dat=read_clust_dat)
 		print()
 	#
-	f_subfasta.close()
-	f_telfasta.close()
+	if TEL_SEQ_PLOTS:
+		f_entire.close()
+		f_subfasta.close()
+		f_telfasta.close()
+		#
+		####import matplotlib.pyplot as mpl
+		####mpl.figure(0)
+		####mpl.scatter(len_by_read_sub, len_by_read_tel)
+		####mpl.show()
+		####exit(1)
 	f_out.close()
 
 	#

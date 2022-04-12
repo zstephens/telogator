@@ -156,119 +156,61 @@ def plot_all_read_data(density_data, tl_vals, aln_dat, tel_window, f_title, fig_
 #
 #	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, read-orientation, readname]
 #
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
-from scipy.spatial.distance import pdist, squareform
-#
-def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name):
-	#if my_chr != 'chr3q':
-	#	return
-	#
+def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 	which_tel = my_chr[-1]
 	max_tlen  = max([n[1] for n in kmer_dat])
 	n_reads   = len(kmer_dat)
 	X_STEP    = 1000
-	scolors   = sorted(list(set(kmer_colors)))
-	col_2_sc  = {n:scolors.index(n) for n in scolors}
-	n_colors  = len(scolors)
 	#
-	# create color vectors
-	#
-	my_color_dat  = []
-	my_col_single = []
-	for i in range(n_reads):
-		[my_kmer_hits, my_tlen, my_orr, my_rname] = kmer_dat[i]
-		my_color_dat.append(np.zeros((n_colors, max_tlen)))
-		my_col_single.append(np.zeros(max_tlen))
-		for ki in range(len(my_kmer_hits)):
-			if len(my_kmer_hits[ki]):
-				if which_tel == 'p':
-					adj = max_tlen - my_tlen
-				else:
-					adj = 0
-				for kmer_span in my_kmer_hits[ki]:
-					cp = col_2_sc[kmer_colors[ki]]
-					xp = [kmer_span[0]+adj, kmer_span[1]+adj]
-					my_color_dat[-1][cp,xp[0]:xp[1]] = 1
-					my_col_single[-1][xp[0]:xp[1]]   = col_2_sc[kmer_colors[ki]]+1
-	#
-	####dist_matrix = np.zeros((n_reads,n_reads))
-	####all_adj     = np.zeros((n_reads,n_reads))
-	####for i in range(n_reads):
-	####	for j in range(i+1,n_reads):
-	####		y = np.zeros(2*max_tlen - 1)
-	####		for k in range(n_colors):
-	####			y += np.correlate(my_color_dat[i][k,:], my_color_dat[j][k,:], 'full')
-	####		best_offset = posmax(y) - (max_tlen-1)
-	####		all_adj[i,j] = best_offset
-	####		all_adj[j,i] = best_offset
-	####		print('AHH', i, j, posmax(y), int(y[posmax(y)]), best_offset)
-	####		hamming = 0
-	####		denom   = 0
-	####		for k in range(max_tlen):
-	####			if k-best_offset >= max_tlen:
-	####				break
-	####			if my_col_single[i][k] != 0 and my_col_single[j][k-best_offset] != 0:
-	####				if my_col_single[i][k] != my_col_single[j][k-best_offset]:
-	####					hamming += 1
-	####				denom += 1
-	####		hamming_norm = float(hamming)/denom
-	####		print('HAMMING:', hamming, hamming_norm)
-	####		dist_matrix[i,j] = hamming_norm
-	####		dist_matrix[j,i] = hamming_norm
-	####		####x = list(range(len(y)))
-	####		####fig = mpl.figure(3)
-	####		####mpl.plot(x,y)
-	####		####mpl.title(str(i) + ' ' + str(j))
-	####		####mpl.show()
-	####		####mpl.close(fig)
-	#####
-	####dist_array = squareform(dist_matrix)
-	####Zread      = linkage(dist_array, method='average')
-	####print(Zread)
-	####fig = mpl.figure(3)
-	####dendrogram(Zread)
-	####mpl.title(str(i) + ' ' + str(j))
-	####mpl.show()
-	####mpl.close(fig)
-	#
+	if clust_dat == None:
+		read_clusters      = [list(range(n_reads))]
+		read_msa_offsets   = [[0]*n_reads]
+		total_rows_to_plot = n_reads
+	else:
+		read_clusters      = clust_dat[0]
+		read_msa_offsets   = clust_dat[1]
+		total_rows_to_plot = n_reads + len(read_clusters)-1
 	#
 	# plotting
 	#
 	fig = mpl.figure(1, figsize=(15,8))
-	for i in range(n_reads):
-		[my_kmer_hits, my_tlen, my_orr, my_rname] = kmer_dat[i]
-		if i == 0:
-			ax1 = mpl.subplot(n_reads, 1, i+1)
-			mpl.setp(ax1.get_xticklabels(), visible=False)
-			mpl.title(my_chr)
-		else:
-			ax2 = mpl.subplot(n_reads, 1, i+1, sharex=ax1)
-			if i < n_reads-1:
-				mpl.setp(ax2.get_xticklabels(), visible=False)
-		#
-		for ki in range(len(my_kmer_hits)):
-			if len(my_kmer_hits[ki]):
-				if which_tel == 'p':
-					adj = max_tlen - my_tlen
-				else:
-					adj = 0
-				#adj += all_adj[8][i]
-				polygons = []
-				p_color  = []
-				p_alpha  = []
-				for kmer_span in my_kmer_hits[ki]:
-					xp = [kmer_span[0]+adj, kmer_span[1]+adj]
-					yp = [-1, 1]
-					polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
-					p_color.append(kmer_colors[ki])
-					p_alpha.append(0.7)
-				#
-				ax = mpl.gca()
-				for j in range(len(polygons)):
-					ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
-				#
-		mpl.yticks([],[])
-		mpl.ylim([-1,1])
+	reads_plotted_thus_far = 0
+	for clust_i in range(len(read_clusters)):
+		for i in range(len(read_clusters[clust_i])):
+			[my_kmer_hits, my_tlen, my_orr, my_rname] = kmer_dat[read_clusters[clust_i][i]]
+			msa_adj = read_msa_offsets[clust_i][i]
+			plot_i  = clust_i + reads_plotted_thus_far
+			if plot_i == 0:
+				ax1 = mpl.subplot(total_rows_to_plot, 1, plot_i+1)
+				mpl.setp(ax1.get_xticklabels(), visible=False)
+				mpl.title(my_chr)
+			else:
+				ax2 = mpl.subplot(total_rows_to_plot, 1, plot_i+1, sharex=ax1)
+				if plot_i < total_rows_to_plot-1:
+					mpl.setp(ax2.get_xticklabels(), visible=False)
+			#
+			for ki in range(len(my_kmer_hits)):
+				if len(my_kmer_hits[ki]):
+					if which_tel == 'p':
+						adj = max_tlen - my_tlen - msa_adj
+					else:
+						adj = 0 + msa_adj
+					polygons = []
+					p_color  = []
+					p_alpha  = []
+					for kmer_span in my_kmer_hits[ki]:
+						xp = [kmer_span[0]+adj, kmer_span[1]+adj]
+						yp = [-1, 1]
+						polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+						p_color.append(kmer_colors[ki])
+						p_alpha.append(0.7)
+					#
+					ax = mpl.gca()
+					for j in range(len(polygons)):
+						ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
+			mpl.yticks([],[])
+			mpl.ylim([-1,1])
+			reads_plotted_thus_far += 1
 	#
 	mpl.xlim([0, max_tlen])
 	if which_tel == 'p':
@@ -288,8 +230,6 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name):
 	#exit(1)
 	mpl.savefig(fig_name)
 	mpl.close(fig)
-	#if my_chr == 'chr3q':
-	#	exit(1)
 
 #
 #

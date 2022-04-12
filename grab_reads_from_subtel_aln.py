@@ -83,7 +83,7 @@ def main(raw_args=None):
 			exit(1)
 	f.close()
 
-	if OUT_READS[-3:] == '.gz':
+	if OUT_READS[-3:].lower() == '.gz':
 		f_out = gzip.open(OUT_READS, 'wt')
 	else:
 		f_out = open(OUT_READS, 'w')
