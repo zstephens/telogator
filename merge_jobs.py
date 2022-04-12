@@ -164,12 +164,12 @@ def main(raw_args=None):
 		#
 		my_anchors = my_pickle['anchored-tels']
 		for k in my_anchors.keys():
-			fail = False
-			for n in my_anchors[k]:
-				if n[3] > 15000:
-					fail = True
-			if fail:
-				continue
+			#fail = False
+			#for n in my_anchors[k]:
+			#	if n[3] > 15000:		# filter out large tlens (for debugging)
+			#		fail = True
+			#if fail:
+			#	continue
 			if k not in COMBINED_ANCHORS:
 				COMBINED_ANCHORS[k] = []
 			COMBINED_ANCHORS[k].extend(copy.deepcopy(my_anchors[k]))
@@ -460,12 +460,14 @@ def main(raw_args=None):
 					plotname_chr = 'alt-' + my_chr
 				else:
 					plotname_chr = my_chr
-				#####
-				####dendrogram_fn = IN_DIR + 'dendrogram_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
-				####read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, fig_name=dendrogram_fn)
-				#####
-				####plot_fn = IN_DIR + 'tel-composition-plot_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
-				####plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn, clust_dat=read_clust_dat)
+				#
+				if True or plotname_chr == 'chr3q':
+					dendrogram_fn = IN_DIR + 'dendrogram_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
+					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, fig_name=dendrogram_fn)
+					#
+					plot_fn = IN_DIR + 'tel-composition-plot_cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
+					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn, clust_dat=read_clust_dat)
+					exit(1)
 		print()
 	#
 	if TEL_SEQ_PLOTS:
