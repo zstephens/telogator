@@ -214,9 +214,10 @@ def main(raw_args=None):
 		read_dat = my_reader.get_next_read()
 		if not read_dat[0]:
 			break
-		all_readdat.append((read_dat[0], read_dat[1]))
-		nreads_read += 1
-	print('found', nreads_read, 'reads.')
+		if len(read_dat[1]) >= MINIMUM_READ_LEN:
+			all_readdat.append((read_dat[0], read_dat[1]))
+			nreads_read += 1
+	print('found', nreads_read, 'reads (>=' + str(MINIMUM_READ_LEN) + 'bp).')
 	my_reader.close()
 
 	#

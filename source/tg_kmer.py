@@ -46,6 +46,9 @@ def get_telomere_regions(td_p_e0, td_p_e1, td_q_e0, td_q_e1, tel_window, pthresh
 	max_win_pos  = max([len(td_p_e0), len(td_p_e1), len(td_q_e0), len(td_q_e1)])
 	p_vs_q_power = np.zeros(max_win_pos)
 	tel_regions  = [[0,None,None]]
+	# somehow we received a sequence that's too short to work with (what went wrong?)
+	if max_win_pos < tel_window:
+		return ([], [[0,0,None]])
 	#
 	for i in range(min_win_pos):
 		c0 = td_p_e0[i] - td_q_e0[i]
@@ -91,6 +94,9 @@ def mad(x, c=1.4826):
 def wavelet_smooth(x, wavelet="db4", smoothing_level=5, fail_sigma=1e-3):
 	# calculate the wavelet coefficients
 	coeff = pywt.wavedec( x, wavelet, mode="per" )
+	# not enough coeffs
+	if len(coeff) < smoothing_level:
+		return x
 	# calculate a threshold
 	sigma = mad( coeff[-smoothing_level] )
 	# if sigma below some value (i.e. signal is mostly 0s) return unsmoothed signal
