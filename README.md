@@ -38,8 +38,8 @@ We recommend using the [winnowmap](https://github.com/marbl/Winnowmap) aligner:
 `winnowmap -W resources/repetitive_k15.txt \ `  
 `    -ax map-pb \ `  
 `    -Y \ `  
-`    t2t-telogator-ref.fa \ `
-`    subtel-reads.fa.gz \ `
+`    t2t-telogator-ref.fa \ `  
+`    subtel-reads.fa.gz \ `  
 `    | samtools view -bh > subtel_aln-unsort.bam`  
 `samtools sort -o subtel_aln.bam subtel_aln-unsort.bam`  
 `samtools index subtel_aln.bam`  
