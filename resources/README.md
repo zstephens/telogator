@@ -10,4 +10,4 @@ Other resources:
 
 * `kmer_trans.dat`: matrix of telomere kmer transition frequencies (used for simulating telomere sequences)  
 * `model_qc_clr`: PBSIM parameters for simulating PacBio CLR reads  
-
+* `repetitive_k15.txt`: repetitive kmers used by winnowmap (`-W` input option)

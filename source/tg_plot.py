@@ -168,7 +168,8 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 		total_rows_to_plot = n_reads
 	else:
 		read_clusters      = clust_dat[0]
-		read_msa_offsets   = clust_dat[1]
+		read_anchor_mapq   = clust_dat[1]
+		read_msa_offsets   = clust_dat[2]
 		total_rows_to_plot = n_reads + len(read_clusters)-1
 	#
 	# plotting
@@ -177,7 +178,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 	reads_plotted_thus_far = 0
 	for clust_i in range(len(read_clusters)):
 		for i in range(len(read_clusters[clust_i])):
-			[my_kmer_hits, my_tlen, my_orr, my_rname] = kmer_dat[read_clusters[clust_i][i]]
+			[my_kmer_hits, my_tlen, my_orr, my_rname, my_mapq] = kmer_dat[read_clusters[clust_i][i]]
 			msa_adj = read_msa_offsets[clust_i][i]
 			plot_i  = clust_i + reads_plotted_thus_far
 			if plot_i == 0:
