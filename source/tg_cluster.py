@@ -1,4 +1,6 @@
 import os
+import multiprocessing
+import random
 
 import numpy as np
 import matplotlib.pyplot as mpl
@@ -9,6 +11,7 @@ from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.spatial.distance import pdist, squareform
 
 from source.tg_reader import TG_Reader
+from source.tg_util import exists_and_is_nonzero
 
 MUSCLE_EXE = '/Users/zach/opt/miniconda2/bin/muscle'
 
@@ -17,6 +20,13 @@ AMINO = ['A','C','D','E','F','G','H','I','K','L','M','N','P','Q','R','S','T','V'
 
 # how many blocks of gaps to consider for plotting adj
 MAX_GAP_BLOCK = 3
+
+# how many shuffles to perform for alignment score background model
+RAND_SHUFFLE_COUNT = 3
+
+# the log-based distance function can go to infinity so lets set an upper bound on it
+MAX_SEQ_DIST = 10.0
+MIN_MSD      = 3.0	# to prevent pesky div-by-zeros in edge cases
 
 def write_scoring_matrix(fn):
 	f = open(fn, 'w')
@@ -124,10 +134,32 @@ def get_adj_from_gaps(s):
 			out_adj = gap_blocks[best_gap[1]][1]
 	return out_adj
 
+def shuffle_seq(s):
+	return ''.join(random.sample(s,len(s)))
+
+def parallel_alignment_job(our_indices, sequences, gap_bool, out_dict):
+	for (i,j) in our_indices:
+		aln = pairwise2.align.globalms(sequences[i], sequences[j], 5, -4, -4, -4, penalize_end_gaps=gap_bool)
+		aln_score   = int(aln[0].score)
+		rand_scores = []
+		for k in range(RAND_SHUFFLE_COUNT):
+			rand_aln = pairwise2.align.globalms(shuffle_seq(sequences[i]), shuffle_seq(sequences[j]), 5, -4, -4, -4, penalize_end_gaps=gap_bool)
+			rand_scores.append(rand_aln[0].score)
+		rand_score = int(np.mean(rand_scores))
+		iden_score = 5.*max(len(sequences[i]), len(sequences[j]))
+		#
+		if rand_score >= aln_score:
+			my_dist = MAX_SEQ_DIST
+		else:
+			my_dist = min(-np.log((aln_score - rand_score)/(iden_score - rand_score)), MAX_SEQ_DIST)
+		print(i, j, aln_score, rand_score, iden_score, '{0:0.3f}'.format(my_dist))
+		#
+		out_dict[(i,j)] = my_dist
+
 #
 #	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, read-orientation, readname, anchor_mapq]
 #
-def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, fig_name=None, cluster_region=2000, tree_cut=0.35, canonical_letter='C'):
+def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=None, cluster_region=2000, tree_cut=0.20, canonical_letter='C', alignment_processes=8):
 	n_reads   = len(kmer_dat)
 	scolors   = sorted(list(set(kmer_colors)))
 	col_2_sc  = {n:scolors.index(n) for n in scolors}
@@ -156,33 +188,48 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, fig_name=None, cluster_
 	#
 	if n_reads == 1:
 		return [ [[0]], [[kmer_dat[0][4]]], [[0]], [my_col_single[0]]]
-	#elif n_reads == 2:
-	#	return [ [[0,1]], , [[0,0]] ]
+	#####
+	##### scoring matrix
+	#####
+	####letters = AMINO[:n_colors+1]
+	####scoring_matrix = {}
+	####for i in range(len(letters)):
+	####	for j in range(len(letters)):
+	####		if i == j:
+	####			scoring_matrix[(letters[i],letters[j])] = 5
+	####		else:
+	####			scoring_matrix[(letters[i],letters[j])] = -4
+	####scoring_matrix[(canonical_letter, canonical_letter)] = 0
 	#
-	# scoring matrix
-	#
-	letters = AMINO[:n_colors+1]
-	scoring_matrix = {}
-	for i in range(len(letters)):
-		for j in range(len(letters)):
-			if i == j:
-				scoring_matrix[(letters[i],letters[j])] = 5
-			else:
-				scoring_matrix[(letters[i],letters[j])] = -4
-	scoring_matrix[(canonical_letter, canonical_letter)] = 0
-	#
-	dist_matrix = np.zeros((n_reads,n_reads))
-	for i in range(n_reads):
-		for j in range(i+1,n_reads):
-			alignments = pairwise2.align.globalms(my_col_single[i], my_col_single[j], 5, -4, -4, -4, penalize_end_gaps=pw2_gap)
-			#alignments = pairwise2.align.globalds(my_col_single[i], my_col_single[j], scoring_matrix, -4, -4, penalize_end_gaps=pw2_gap)
-			my_score   = int(alignments[0].score)
-			aln_symbol = pairwise2.format_alignment(*alignments[0]).split('\n')[1]
-			my_dist    = float(aln_symbol.count('.') + aln_symbol.count(' '))/cluster_region
-			dist_matrix[i,j] = my_dist
-			dist_matrix[j,i] = my_dist
-			#print(pairwise2.format_alignment(*alignments[0]))
-			#print(i, j, 'pairwise-distance: {0:0.3f}'.format(my_dist), 'aln-score:', my_score)
+	if dist_in == None or exists_and_is_nonzero(dist_in) == False:
+		all_indices = [[] for n in range(alignment_processes)]
+		k = 0
+		for i in range(n_reads):
+			for j in range(i+1,n_reads):
+				all_indices[k%alignment_processes].append((i,j))
+				k += 1
+		#
+		manager     = multiprocessing.Manager()
+		return_dict = manager.dict()
+		processes   = []
+		for i in range(alignment_processes):
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], my_col_single, pw2_gap, return_dict))
+			processes.append(p)
+		for i in range(alignment_processes):
+			processes[i].start()
+		for i in range(alignment_processes):
+			processes[i].join()
+		#
+		dist_matrix = np.zeros((n_reads,n_reads))
+		for (i,j) in return_dict.keys():
+			dist_matrix[i,j] = return_dict[(i,j)]
+			dist_matrix[j,i] = return_dict[(i,j)]
+		dist_norm    = max(np.max(dist_matrix), MIN_MSD)
+		dist_matrix /= dist_norm
+		if dist_in != None:
+			np.save(dist_in, dist_matrix)
+	else:
+		dist_matrix = np.load(dist_in, allow_pickle=True)
 	#
 	dist_array = squareform(dist_matrix)
 	Zread      = linkage(dist_array, method='average')
@@ -235,29 +282,55 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, fig_name=None, cluster_
 #
 #
 #
-def cluster_consensus_tel(sequences, fig_name=None):
+def cluster_consensus_tel(sequences, dist_in=None, dist_out=None, fig_name=None, samp_labels=None, tree_cut=0.20, alignment_processes=8):
 	n_seq = len(sequences)
-	dist_matrix = np.zeros((n_seq,n_seq))
-	pw2_gap = (False, False)
-	for i in range(n_seq):
-		for j in range(i+1,n_seq):
-			alignments = pairwise2.align.globalms(sequences[i], sequences[j], 5, -4, -4, -4, penalize_end_gaps=pw2_gap)
-			#alignments = pairwise2.align.globalds(sequences[i], sequences[j], scoring_matrix, -4, -4, penalize_end_gaps=False)
-			my_score   = int(alignments[0].score)
-			aln_symbol = pairwise2.format_alignment(*alignments[0]).split('\n')[1]
-			my_dist    = float(aln_symbol.count('.') + aln_symbol.count(' '))
-			dist_matrix[i,j] = my_dist
-			dist_matrix[j,i] = my_dist
-			#print(pairwise2.format_alignment(*alignments[0]))
-			print(i, j, 'pairwise-distance: {0:0.3f}'.format(my_dist), 'aln-score:', my_score)
+	if dist_in == None:
+		dist_matrix = np.zeros((n_seq,n_seq))
+		pw2_gap     = (False, False)
+		all_indices = [[] for n in range(alignment_processes)]
+		k = 0
+		for i in range(n_seq):
+			for j in range(i+1,n_seq):
+				all_indices[k%alignment_processes].append((i,j))
+				k += 1
+		#
+		manager     = multiprocessing.Manager()
+		return_dict = manager.dict()
+		processes   = []
+		for i in range(alignment_processes):
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, return_dict))
+			processes.append(p)
+		for i in range(alignment_processes):
+			processes[i].start()
+		for i in range(alignment_processes):
+			processes[i].join()
+		#
+		dist_matrix = np.zeros((n_seq,n_seq))
+		for (i,j) in return_dict.keys():
+			dist_matrix[i,j] = return_dict[(i,j)]
+			dist_matrix[j,i] = return_dict[(i,j)]
+		dist_norm    = max(np.max(dist_matrix), MIN_MSD)
+		dist_matrix /= dist_norm
+		if dist_out != None:
+			np.save(dist_out, dist_matrix)
+	else:
+		dist_matrix = np.load(dist_in, allow_pickle=True)
 	#
-	dist_array = squareform(dist_matrix)
-	Zread      = linkage(dist_array, method='average')
+	d_arr = squareform(dist_matrix)
+	Zread = linkage(d_arr, method='ward')
 	#
 	if fig_name != None:
-		fig = mpl.figure(3, figsize=(8,8))
-		dendrogram(Zread)
-		#mpl.axhline(y=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
-		mpl.title(my_chr)
+		mpl.rcParams.update({'font.size': 16, 'font.weight':'bold'})
+		#
+		fig = mpl.figure(3, figsize=(8,24))
+		dendro_dat = dendrogram(Zread, orientation='left', labels=samp_labels)
+		#mpl.axvline(x=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
+		mpl.xlabel('distance')
+		#
+		mpl.tight_layout()
 		mpl.savefig(fig_name)
 		mpl.close(fig)
+	#
+	labels_fromtop = dendro_dat['ivl'][::-1]
+	#
+	return (labels_fromtop)

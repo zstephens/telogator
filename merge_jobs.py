@@ -79,9 +79,8 @@ def main(raw_args=None):
 	#
 	TELCOMP_DIR    = IN_DIR + 'phased_tel_composition/'
 	DENDROGRAM_DIR = IN_DIR + 'phased_tel_dendrograms/'
+	DISTMATRIX_DIR = IN_DIR + 'phased_tel_distmatrix/'
 	ALLELE_OUT_FN  = IN_DIR + 'phased_tel_results.tsv'
-	makedir(TELCOMP_DIR)
-	makedir(DENDROGRAM_DIR)
 
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.rc
@@ -94,6 +93,11 @@ def main(raw_args=None):
 	EXTRA_READLEN_PLOTS = args.extra_readlen_plots
 	EXTRA_READLEN_YMAX  = args.rl
 	TREECUT_TSV         = args.tc
+
+	if TEL_SEQ_PLOTS:
+		makedir(TELCOMP_DIR)
+		makedir(DENDROGRAM_DIR)
+		makedir(DISTMATRIX_DIR)
 
 	KMER_FILE   = args.k
 	KMER_LIST   = []
@@ -311,6 +315,7 @@ def main(raw_args=None):
 		ALLELE_CLUST_DAT = []
 	#
 	unexplained_telseq_dict = {}
+	allele_count_by_chr     = {}
 	#
 	len_by_read_tel = []
 	len_by_read_sub = []
@@ -481,12 +486,13 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr3q':
+				if True or plotname_chr == 'chr2p':
 					dendrogram_fn = DENDROGRAM_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
+					distmatrix_fn = DISTMATRIX_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.npy'
 					if my_chr in custom_treecut_vals:
-						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, fig_name=dendrogram_fn, tree_cut=custom_treecut_vals[my_chr])
+						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=custom_treecut_vals[my_chr])
 					else:
-						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, fig_name=dendrogram_fn)
+						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn)
 					for allele_i in range(len(read_clust_dat[0])):
 						allele_readcount = len(read_clust_dat[0][allele_i])
 						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1], kmer_hit_dat[n][4]) for n in read_clust_dat[0][allele_i]])
@@ -506,7 +512,10 @@ def main(raw_args=None):
 							consensus_tl_allele = np.percentile(allele_tlens, my_percentile)
 						#
 						if allele_readcount >= MIN_READS_PER_PHASE:
-							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_i), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, read_clust_dat[3][allele_i]])
+							if my_chr not in allele_count_by_chr:
+								allele_count_by_chr[my_chr] = 0
+							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_count_by_chr[my_chr]), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, read_clust_dat[3][allele_i]])
+							allele_count_by_chr[my_chr] += 1
 					plot_fn = TELCOMP_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
 					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn, clust_dat=read_clust_dat)
 		print()
