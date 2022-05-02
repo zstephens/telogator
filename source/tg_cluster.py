@@ -28,14 +28,25 @@ RAND_SHUFFLE_COUNT = 3
 MAX_SEQ_DIST = 10.0
 MIN_MSD      = 3.0	# to prevent pesky div-by-zeros in edge cases
 
+MATCH_NORMAL  = 5
+XMATCH_NORMAL = -4
+GAP_OPEN = -4
+GAP_EXT  = -4
+#
+MATCH_CANON  = 2
+XMATCH_CANON = -4
+#
+MATCH_UNKNOWN  = 0
+XMATCH_UNKNOWN = -4
+
 def write_scoring_matrix(fn):
 	f = open(fn, 'w')
 	f.write('   A  R  N  D  C  Q  E  G  H  I  L  K  M  F  P  S  T  W  Y  V  B  J  Z  X  *' + '\n')
-	f.write('A  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('A  1 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
 	f.write('R -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
 	f.write('N -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
 	f.write('D -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
-	f.write('C -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('C -4 -4 -4 -4  1 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
 	f.write('Q -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
 	f.write('E -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
 	f.write('G -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
@@ -137,29 +148,45 @@ def get_adj_from_gaps(s):
 def shuffle_seq(s):
 	return ''.join(random.sample(s,len(s)))
 
-def parallel_alignment_job(our_indices, sequences, gap_bool, out_dict):
+def parallel_alignment_job(our_indices, sequences, gap_bool, out_dict, scoring_matrix=None):
 	for (i,j) in our_indices:
-		aln = pairwise2.align.globalms(sequences[i], sequences[j], 5, -4, -4, -4, penalize_end_gaps=gap_bool)
+		#
+		if scoring_matrix == None:
+			aln = pairwise2.align.globalms(sequences[i], sequences[j], MATCH_NORMAL, XMATCH_NORMAL, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+		else:
+			aln = pairwise2.align.globalds(sequences[i], sequences[j], scoring_matrix, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+		#
 		aln_score   = int(aln[0].score)
 		rand_scores = []
 		for k in range(RAND_SHUFFLE_COUNT):
-			rand_aln = pairwise2.align.globalms(shuffle_seq(sequences[i]), shuffle_seq(sequences[j]), 5, -4, -4, -4, penalize_end_gaps=gap_bool)
+			#
+			if scoring_matrix == None:
+				rand_aln = pairwise2.align.globalms(shuffle_seq(sequences[i]), shuffle_seq(sequences[j]), MATCH_NORMAL, XMATCH_NORMAL, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+			else:
+				rand_aln = pairwise2.align.globalds(shuffle_seq(sequences[i]), shuffle_seq(sequences[j]), scoring_matrix, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+			#
 			rand_scores.append(rand_aln[0].score)
 		rand_score = int(np.mean(rand_scores))
-		iden_score = 5.*max(len(sequences[i]), len(sequences[j]))
+		if scoring_matrix == None:
+			iden_score = MATCH_NORMAL*max(len(sequences[i]), len(sequences[j]))
+		else:
+			is1 = sum([scoring_matrix[(n,n)] for n in sequences[i]])
+			is2 = sum([scoring_matrix[(n,n)] for n in sequences[j]])
+			iden_score = max(is1, is2)
 		#
 		if rand_score >= aln_score:
 			my_dist = MAX_SEQ_DIST
 		else:
 			my_dist = min(-np.log((aln_score - rand_score)/(iden_score - rand_score)), MAX_SEQ_DIST)
-		print(i, j, aln_score, rand_score, iden_score, '{0:0.3f}'.format(my_dist))
+		#print(i, j, aln_score, rand_score, iden_score, '{0:0.3f}'.format(my_dist))
+		print('>', sequences[i], sequences[j], aln_score, iden_score, rand_score)
 		#
 		out_dict[(i,j)] = my_dist
 
 #
-#	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, read-orientation, readname, anchor_mapq]
+#	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, tel-anchor-dist, read-orientation, readname, anchor_mapq]
 #
-def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=None, cluster_region=2000, tree_cut=0.20, canonical_letter='C', alignment_processes=8):
+def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=None, msa_dir='', cluster_region=2000, tree_cut=0.400, alignment_processes=12, canonical_letter='C', unknown_letter='A'):
 	n_reads   = len(kmer_dat)
 	scolors   = sorted(list(set(kmer_colors)))
 	col_2_sc  = {n:scolors.index(n) for n in scolors}
@@ -170,36 +197,48 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=
 	#
 	my_col_single = []
 	for i in range(n_reads):
-		[my_kmer_hits, my_tlen, my_orr, my_rname, my_mapq] = kmer_dat[i]
+		[my_kmer_hits, my_tlen, my_dbta, my_orr, my_rname, my_mapq] = kmer_dat[i]
 		my_col_single.append(np.zeros(my_tlen, dtype='>i4'))
 		for ki in range(len(my_kmer_hits)):
 			if len(my_kmer_hits[ki]):
 				for kmer_span in my_kmer_hits[ki]:
 					xp = [kmer_span[0], kmer_span[1]]
 					my_col_single[-1][xp[0]:xp[1]] = col_2_sc[kmer_colors[ki]]+1
+		seq_size = cluster_region + my_dbta
 		if pq == 'p':
-			my_col_single[-1] = ''.join([AMINO[n] for n in my_col_single[-1][-cluster_region:]])
-			pw2_gap = (False, True)
+			my_col_single[-1] = ''.join([AMINO[n] for n in my_col_single[-1][-seq_size:]])
 		elif pq == 'q':
-			my_col_single[-1] = ''.join([AMINO[n] for n in my_col_single[-1][:cluster_region]])
-			pw2_gap = (True, False)
+			my_col_single[-1] = ''.join([AMINO[n] for n in my_col_single[-1][:seq_size]])
+	#
+	if pq == 'p':
+		pw2_gap = (False, True)
+	elif pq == 'q':
+		pw2_gap = (True, False)
 	#
 	# trivial case
 	#
 	if n_reads == 1:
-		return [ [[0]], [[kmer_dat[0][4]]], [[0]], [my_col_single[0]]]
-	#####
-	##### scoring matrix
-	#####
-	####letters = AMINO[:n_colors+1]
-	####scoring_matrix = {}
-	####for i in range(len(letters)):
-	####	for j in range(len(letters)):
-	####		if i == j:
-	####			scoring_matrix[(letters[i],letters[j])] = 5
-	####		else:
-	####			scoring_matrix[(letters[i],letters[j])] = -4
-	####scoring_matrix[(canonical_letter, canonical_letter)] = 0
+		return [ [[0]], [[kmer_dat[0][5]]], [[0]], [my_col_single[0]]]
+	#
+	# scoring matrix
+	#
+	letters = AMINO[:n_colors+1]
+	scoring_matrix = {}
+	for i in range(len(letters)):
+		for j in range(len(letters)):
+			if i == j:
+				scoring_matrix[(letters[i],letters[j])] = MATCH_NORMAL
+			else:
+				scoring_matrix[(letters[i],letters[j])] = XMATCH_NORMAL
+				scoring_matrix[(letters[j],letters[i])] = XMATCH_NORMAL
+	for i in range(len(letters)):
+		scoring_matrix[(letters[i],canonical_letter)] = XMATCH_CANON
+		scoring_matrix[(canonical_letter,letters[i])] = XMATCH_CANON
+	for i in range(len(letters)):
+		scoring_matrix[(letters[i],unknown_letter)] = XMATCH_UNKNOWN
+		scoring_matrix[(unknown_letter,letters[i])] = XMATCH_UNKNOWN
+	scoring_matrix[(canonical_letter, canonical_letter)] = MATCH_CANON		# reduced award for matching canonical
+	scoring_matrix[(unknown_letter, unknown_letter)]     = MATCH_UNKNOWN	# no reward for matching unknown regions
 	#
 	if dist_in == None or exists_and_is_nonzero(dist_in) == False:
 		all_indices = [[] for n in range(alignment_processes)]
@@ -213,7 +252,7 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=
 		return_dict = manager.dict()
 		processes   = []
 		for i in range(alignment_processes):
-			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], my_col_single, pw2_gap, return_dict))
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], my_col_single, pw2_gap, return_dict, scoring_matrix))
 			processes.append(p)
 		for i in range(alignment_processes):
 			processes[i].start()
@@ -232,7 +271,7 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=
 		dist_matrix = np.load(dist_in, allow_pickle=True)
 	#
 	dist_array = squareform(dist_matrix)
-	Zread      = linkage(dist_array, method='average')
+	Zread      = linkage(dist_array, method='ward')
 	#
 	if fig_name != None:
 		fig = mpl.figure(3, figsize=(8,8))
@@ -250,6 +289,9 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=
 		by_class[assignments[i]].append(i)
 	out_clust = sorted([(len(by_class[k]), sorted(by_class[k])) for k in by_class.keys()], reverse=True)
 	out_clust = [n[1] for n in out_clust]
+	for i in range(len(out_clust)):	# sort by length
+		out_clust[i] = sorted([(kmer_dat[n][1],n) for n in out_clust[i]], reverse=True)
+		out_clust[i] = [n[1] for n in out_clust[i]]
 	#
 	out_adj       = []
 	out_consensus = []
@@ -259,7 +301,7 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=
 			out_consensus.append(my_col_single[out_clust[i][0]])
 		else:
 			clust_seq                = [my_col_single[n] for n in out_clust[i]]
-			[msa_seq, consensus_seq] = get_muscle_msa(clust_seq)
+			[msa_seq, consensus_seq] = get_muscle_msa(clust_seq, working_dir=msa_dir)
 			out_adj.append([])
 			for j in range(len(msa_seq)):
 				if pq == 'q':
@@ -270,7 +312,7 @@ def cluster_tel_sequences(kmer_dat, kmer_colors, my_chr, dist_in=None, fig_name=
 	#
 	out_mapq = []
 	for n in out_clust:
-		out_mapq.append([kmer_dat[m][4] for m in n])
+		out_mapq.append([kmer_dat[m][5] for m in n])
 	#
 	print(out_clust)
 	print(out_mapq)

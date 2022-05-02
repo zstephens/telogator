@@ -178,17 +178,24 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 	reads_plotted_thus_far = 0
 	for clust_i in range(len(read_clusters)):
 		for i in range(len(read_clusters[clust_i])):
-			[my_kmer_hits, my_tlen, my_orr, my_rname, my_mapq] = kmer_dat[read_clusters[clust_i][i]]
+			my_ind_all = read_clusters[clust_i][i]
+			[my_kmer_hits, my_tlen, my_dbta, my_orr, my_rname, my_mapq] = kmer_dat[my_ind_all]
 			msa_adj = read_msa_offsets[clust_i][i]
 			plot_i  = clust_i + reads_plotted_thus_far
 			if plot_i == 0:
 				ax1 = mpl.subplot(total_rows_to_plot, 1, plot_i+1)
 				mpl.setp(ax1.get_xticklabels(), visible=False)
+				if which_tel == 'p':
+					ax1.yaxis.set_label_position("right")
+					ax1.yaxis.tick_right()
 				mpl.title(my_chr)
 			else:
 				ax2 = mpl.subplot(total_rows_to_plot, 1, plot_i+1, sharex=ax1)
 				if plot_i < total_rows_to_plot-1:
 					mpl.setp(ax2.get_xticklabels(), visible=False)
+				if which_tel == 'p':
+					ax2.yaxis.set_label_position("right")
+					ax2.yaxis.tick_right()
 			#
 			for ki in range(len(my_kmer_hits)):
 				if len(my_kmer_hits[ki]):
@@ -209,7 +216,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 					ax = mpl.gca()
 					for j in range(len(polygons)):
 						ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
-			mpl.yticks([],[])
+			mpl.yticks([0],['('+str(my_ind_all)+') '+my_rname])
 			mpl.ylim([-1,1])
 			reads_plotted_thus_far += 1
 	#

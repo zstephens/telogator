@@ -418,26 +418,39 @@ def main(raw_args=None):
 					my_rdat = COMBINED_ANCHORS[k][i][6]
 					my_alns = COMBINED_ANCHORS[k][i][7]
 					#
-					my_mapq = None
+					my_mapq    = None
+					my_dbta    = None	# distance between telomere and anchor
+					anchor_mai = None
 					my_anchor_ref_coords = sorted(COMBINED_ANCHORS[k][i][2])
-					for my_aln in my_alns:
+					for mai in range(len(my_alns)):
+						my_aln = my_alns[mai]
 						if my_aln[3]!= None and my_aln[4] != None and sorted([my_aln[3], my_aln[4]]) == my_anchor_ref_coords:
-							my_mapq = my_aln[6]
+							anchor_mai = mai
+					if anchor_mai != None:
+						my_mapq = my_alns[anchor_mai][6]
+						if my_alns[0][2][:3] == 'tel':		# tel is first alignment
+							my_dbta = my_alns[anchor_mai][0] - my_alns[0][1]
+						elif my_alns[-1][2][:3] == 'tel':	# tel is last alignment
+							my_dbta = my_alns[-1][0] - my_alns[anchor_mai][1]
+						if my_dbta == None or my_dbta < 0:
+							print('Error: we messed up trying to get your telomere-anchor dist:', k, i, my_dbta)
+					#
+					atb = my_tlen + my_dbta	# adjusted telomere boundary
 					#
 					if my_chr[-1] == 'p':
 						if my_type == 'p':
-							my_telseq = my_rdat[:my_tlen]
-							my_subseq = my_rdat[my_tlen:]
+							my_telseq = my_rdat[:atb]
+							my_subseq = my_rdat[atb:]
 						elif my_type == 'q':
-							my_telseq = RC(my_rdat[-my_tlen:])
-							my_subseq = RC(my_rdat[:-my_tlen])
+							my_telseq = RC(my_rdat[-atb:])
+							my_subseq = RC(my_rdat[:-atb])
 					elif my_chr[-1] == 'q':
 						if my_type == 'p':
-							my_telseq = RC(my_rdat[:my_tlen])
-							my_subseq = RC(my_rdat[my_tlen:])
+							my_telseq = RC(my_rdat[:atb])
+							my_subseq = RC(my_rdat[atb:])
 						elif my_type == 'q':
-							my_telseq = my_rdat[-my_tlen:]
-							my_subseq = my_rdat[:-my_tlen]
+							my_telseq = my_rdat[-atb:]
+							my_subseq = my_rdat[:-atb]
 					len_by_read_tel.append(len(my_telseq))
 					len_by_read_sub.append(len(my_subseq))
 					#
@@ -455,17 +468,17 @@ def main(raw_args=None):
 					#
 					# kmer_hit_dat[-1][0][kmer_list_i] = hits in current read for kmer kmer_list_i
 					#
-					kmer_hit_dat.append([get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING), my_tlen, my_type, my_rnm, my_mapq])
+					kmer_hit_dat.append([get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING), atb, my_dbta, my_type, my_rnm, my_mapq])
 					#
 					# what are the unexplained sequences?
 					#
-					coord_hit_all = np.zeros(my_tlen)
+					coord_hit_all = np.zeros(atb)
 					for kmer_list_i in range(len(KMER_LIST)):
 						for kmer_span in kmer_hit_dat[-1][0][kmer_list_i]:
 							for j in range(kmer_span[0],kmer_span[1]):
 								coord_hit_all[j] = 1
 					unexplained_regions = []
-					for j in range(my_tlen):
+					for j in range(atb):
 						if coord_hit_all[j] == 0:
 							unexplained_regions.append([j,j+1])
 					for j in range(len(unexplained_regions)-1,0,-1):
@@ -486,13 +499,13 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr2p':
+				if True or plotname_chr == 'chr14p':
 					dendrogram_fn = DENDROGRAM_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
 					distmatrix_fn = DISTMATRIX_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.npy'
 					if my_chr in custom_treecut_vals:
-						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=custom_treecut_vals[my_chr])
+						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=custom_treecut_vals[my_chr], msa_dir=IN_DIR)
 					else:
-						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn)
+						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn, msa_dir=IN_DIR)
 					for allele_i in range(len(read_clust_dat[0])):
 						allele_readcount = len(read_clust_dat[0][allele_i])
 						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1], kmer_hit_dat[n][4]) for n in read_clust_dat[0][allele_i]])

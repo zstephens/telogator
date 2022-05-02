@@ -9,17 +9,19 @@ import sys
 
 import numpy as np
 
-from source.tg_plot import plot_kmer_hits
+from source.tg_kmer   import get_nonoverlapping_kmer_hits
+from source.tg_plot   import plot_kmer_hits
 from source.tg_reader import TG_Reader
-from source.tg_util import RC, cluster_list, LEXICO_2_IND
+from source.tg_util   import RC, cluster_list, LEXICO_2_IND
 
 DUMMY_MAPQ = 60	# for fasta input
+DUMMY_DBTA = 0
 
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='quick_plot_tel_composition.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
-	parser.add_argument('-i',  type=str, required=True,                  metavar='* input.sam',    help="* Input SAM or FASTA")
-	parser.add_argument('-o',  type=str, required=True,                  metavar='* output.png',   help="* Output plot")
-	parser.add_argument('-k',  type=str, required=False, default='',     metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
+	parser.add_argument('-i',  type=str, required=True,              metavar='* input.sam',    help="* Input SAM or FASTA")
+	parser.add_argument('-o',  type=str, required=True,              metavar='* output.png',   help="* Output plot")
+	parser.add_argument('-k',  type=str, required=False, default='', metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
 	args = parser.parse_args()
 
 	IN_SAM   = args.i
@@ -28,13 +30,13 @@ def main(raw_args=None):
 	KMER_FILE   = args.k
 	KMER_LIST   = []
 	KMER_COLORS = []
+	rev_kmers   = []
+	rev_colors  = []
 	if KMER_FILE == '':
 		print('using default telomere kmers.')
 		sim_path = pathlib.Path(__file__).resolve().parent
 		kmer_fn  = str(sim_path) + '/resources/plot_kmers.tsv'
 		f = open(kmer_fn,'r')
-		rev_kmers  = []
-		rev_colors = []
 		for line in f:
 			splt = line.strip().split('\t')
 			KMER_LIST.append(splt[1])
@@ -68,6 +70,9 @@ def main(raw_args=None):
 	for i in range(len(KMER_LIST)):
 		KMER_ISSUBSTRING.append([j for j in range(len(KMER_LIST)) if (j != i and KMER_LIST[i] in KMER_LIST[j])])
 	
+	#
+	#
+	#
 	read_dat = []
 	if IN_SAM[-4:].lower() == '.sam':
 		f_sam = open(IN_SAM, 'r')
@@ -113,50 +118,7 @@ def main(raw_args=None):
 		####	my_telseq = RC(my_telseq)
 		line_num += 1
 		#
-		kmer_hit_dat.append([[], my_tlen, my_type, my_rnm, my_mapq])	# kmer_hit_dat[-1][0][ki] = hits in current read for kmer ki
-		coord_hit_dict = []	# this is sloppy but easy
-		coord_hit_all  = np.zeros(my_tlen)
-		for ki in range(len(KMER_LIST)):
-			# get all hits
-			raw_hits = [(n.start(0), n.end(0)) for n in re.finditer(KMER_LIST[ki], my_telseq)]
-			coord_hit_dict.append({})
-			for kmer_span in raw_hits:
-				for j in range(kmer_span[0],kmer_span[1]):
-					coord_hit_dict[-1][j] = True
-					coord_hit_all[j]      = 1
-			kmer_hit_dat[-1][0].append([n for n in raw_hits])
-		#
-		# remove hits of kmers that overlap with a hit from any of their superstrings
-		#
-		for ki in range(len(KMER_LIST)):
-			del_list = []
-			for ksi in range(len(kmer_hit_dat[-1][0][ki])):
-				kmer_span = kmer_hit_dat[-1][0][ki][ksi]
-				are_we_hit = False
-				for sub_i in KMER_ISSUBSTRING[ki]:
-					for j in range(kmer_span[0], kmer_span[1]):
-						if j in coord_hit_dict[sub_i]:
-							are_we_hit = True
-							break
-					if are_we_hit:
-						break
-				if are_we_hit:
-					del_list.append(ksi)
-			before_del_len = len(kmer_hit_dat[-1][0][ki])
-			for di in sorted(del_list, reverse=True):
-				del kmer_hit_dat[-1][0][ki][di]
-			#print(ki, KMER_LIST[ki], KMER_ISSUBSTRING[ki], before_del_len, '-->', len(kmer_hit_dat[-1][0][ki]))
-		#
-		# collapse adjacent hits into larger blocks (so we have less polygons to plot)
-		#
-		for ki in range(len(KMER_LIST)):
-			collapsed_kmer_spans = [[n[0],n[1]] for n in kmer_hit_dat[-1][0][ki]]
-			for j in range(len(collapsed_kmer_spans)-1,0,-1):
-				if collapsed_kmer_spans[j-1][1] == collapsed_kmer_spans[j][0]:
-					collapsed_kmer_spans[j-1][1] = collapsed_kmer_spans[j][1]
-					del collapsed_kmer_spans[j]
-			kmer_hit_dat[-1][0][ki] = [n for n in collapsed_kmer_spans]
-			#print(kmer_hit_dat[-1][0][ki])
+		kmer_hit_dat.append([get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING), my_tlen, DUMMY_DBTA, my_type, my_rnm, my_mapq])	# kmer_hit_dat[-1][0][ki] = hits in current read for kmer ki
 	#
 	plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, OUT_PLOT)
 	#
