@@ -41,6 +41,22 @@ def get_telomere_kmer_density(read_dat, kmer_list, tel_window, smoothing=False):
 
 #
 #
+def get_telomere_kmer_frac(read_dat, kmer_list, mode='hifi'):
+	re_hits = []
+	for i in range(len(kmer_list)):
+		re_hits.extend([(n.start(0), n.end(0), i, 0) for n in re.finditer(kmer_list[i], read_dat)])
+		if mode in ['clr', 'ont']:
+			re_hits.extend([(n.start(0), n.end(0), i, 1) for n in regex.finditer("("+kmer_list[i]+"){e<=1}", read_dat, overlapped=True)])
+	#
+	tel_hit = np.zeros(len(read_dat),dtype='<i4')
+	for re_hit in re_hits:
+		tel_hit[re_hit[0]:re_hit[1]] = 1
+	tel_hit = tel_hit.tolist()
+	#
+	return float(tel_hit.count(1))/len(read_dat)
+
+#
+#
 def get_telomere_regions(td_p_e0, td_p_e1, td_q_e0, td_q_e1, tel_window, pthresh, smoothing=True):
 	min_win_pos  = min([len(td_p_e0), len(td_p_e1), len(td_q_e0), len(td_q_e1)])
 	max_win_pos  = max([len(td_p_e0), len(td_p_e1), len(td_q_e0), len(td_q_e1)])
@@ -177,7 +193,7 @@ def get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING):
 	for kmer_list_i in range(len(KMER_LIST)):
 		del_list = []
 		for ksi in range(len(out_dat[kmer_list_i])):
-			kmer_span = out_dat[kmer_list_i][ksi]
+			kmer_span  = out_dat[kmer_list_i][ksi]
 			are_we_hit = False
 			for sub_i in KMER_ISSUBSTRING[kmer_list_i]:
 				for j in range(kmer_span[0], kmer_span[1]):
@@ -201,6 +217,21 @@ def get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING):
 				collapsed_kmer_spans[j-1][1] = collapsed_kmer_spans[j][1]
 				del collapsed_kmer_spans[j]
 		out_dat[kmer_list_i] = [n for n in collapsed_kmer_spans]
-		#print(out_dat[kmer_list_i])
+	#
+	# truncate hits overlapping the prefix of another hit
+	#
+	del_list = []
+	for kmer_list_i in range(len(KMER_LIST)):
+		for kmer_list_j in range(len(KMER_LIST)):
+			if kmer_list_j == kmer_list_i:
+				continue
+			for ksi in range(len(out_dat[kmer_list_i])):
+				for ksj in range(len(out_dat[kmer_list_j])):
+					kmer_span_i = out_dat[kmer_list_i][ksi]
+					kmer_span_j = out_dat[kmer_list_j][ksj]
+					if kmer_span_j[0] > kmer_span_i[1]:
+						break
+					if kmer_span_i[0] < kmer_span_j[0] and kmer_span_i[1] > kmer_span_j[0]:
+						out_dat[kmer_list_i][ksi] = [kmer_span_i[0], kmer_span_j[0]]
 	#
 	return out_dat

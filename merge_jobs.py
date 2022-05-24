@@ -9,8 +9,8 @@ import sys
 
 import numpy as np
 
-from source.tg_cluster import cluster_tel_sequences
-from source.tg_kmer    import get_nonoverlapping_kmer_hits
+from source.tg_cluster import cluster_tel_sequences, convert_colorvec_to_kmerhits
+from source.tg_kmer    import get_nonoverlapping_kmer_hits, get_telomere_kmer_frac
 from source.tg_plot    import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
 from source.tg_util    import RC, cluster_list, LEXICO_2_IND, exists_and_is_nonzero, makedir
 
@@ -20,12 +20,18 @@ MIN_DOUBLE_ANCHOR_READS = 3
 #
 DUMMY_TEL_MAPQ = 60
 #
+INCLUDE_SUBTEL_BUFF = 500	# how much into the subtel alignment should we consider when clustering reads
 
+#
+#
+#
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='merge_jobs.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
 	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/',      help="* Path to telogator results directory")
+	parser.add_argument('-m',  type=str, required=False, default='hifi', metavar='[hifi]',         help="Type of reads (hifi, clr, ont)")
 	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',          help="Method for computing TL (mean/median/max/p90)")
 	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
+	parser.add_argument('-cp', type=int, required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%)")
 	parser.add_argument('-rc', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
 	parser.add_argument('-ra', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per phased allele")
 	parser.add_argument('-ta', type=str, required=False, default='max',  metavar='[max]',          help="Method for computing allele-TL (mean/median/max/p90)")
@@ -38,8 +44,10 @@ def main(raw_args=None):
 	#
 	parser.add_argument('--pbsim',                 required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
 	parser.add_argument('--tel-composition-plots', required=False, default=False,  action='store_true', help='Produce telomere sequence composition plots')
+	parser.add_argument('--plot-denoised-tel',     required=False, default=False,  action='store_true', help='Use denoised reads for sequence composition plotting')
 	parser.add_argument('--extra-tlen-plots',      required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
 	parser.add_argument('--extra-readlen-plots',   required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
+	parser.add_argument('--telogator-pickle',      required=False, default=False,  action='store_true', help='Produce pickle which can be reprocessed by telogator.py')
 	args = parser.parse_args()
 
 	IN_DIR = args.i
@@ -47,14 +55,19 @@ def main(raw_args=None):
 		IN_DIR += '/'
 	IN_PREFIX = 'tel-data'
 
+	READ_TYPE = args.m.lower()
+	if READ_TYPE not in ['hifi', 'clr', 'ont']:
+		print('Error: -m must be hifi, clr, or ont')
+		exit(1)
+
 	TL_METHOD        = args.t
 	TL_METHOD_ALLELE = args.ta
 
-	SUMMARY_SCATTER = IN_DIR + 'tel_lens_scatter.png'
-	CONFUSION_PLOT  = IN_DIR + 'subtel_confusion_matrix.png'
-	OUT_TSV         = IN_DIR + 'results.tsv'
+	SUMMARY_SCATTER = IN_DIR + 'tlens_scatter.png'
+	OUT_TSV         = IN_DIR + 'tlens_by_chr.tsv'
 	MERGED_ALNS     = IN_DIR + 'merged_aln.p'
 	TH_COMP_OUT     = IN_DIR + 'telomerehunter_comparison.tsv'
+	CONFUSION_PLOT  = IN_DIR + 'subtel_confusion_matrix.png'
 
 	VIOLIN_00 = IN_DIR + 'tlens_violin_00_all.png'
 	VIOLIN_01 = IN_DIR + 'tlens_violin_01_chr.png'
@@ -73,14 +86,15 @@ def main(raw_args=None):
 	READLEN_VIOLIN_07 = IN_DIR + 'readlens_violin_07_alt-pass.png'
 	READLEN_VIOLIN_08 = IN_DIR + 'readlens_violin_08_alt-filt.png'
 	#
-	TEL_SEQUENCES_FASTA  = IN_DIR + 'tel-sequences.fa'
-	SUB_SEQUENCES_FASTA  = IN_DIR + 'sub-sequences.fa'
-	READ_SEQUENCES_FASTA = IN_DIR + 'read-sequences.fa'
+	TEL_SEQUENCES_FASTA  = IN_DIR + 'sequences-tel.fa'
+	SUB_SEQUENCES_FASTA  = IN_DIR + 'sequences-sub.fa'
+	READ_SEQUENCES_FASTA = IN_DIR + 'sequences-read.fa'
 	#
 	TELCOMP_DIR    = IN_DIR + 'phased_tel_composition/'
 	DENDROGRAM_DIR = IN_DIR + 'phased_tel_dendrograms/'
 	DISTMATRIX_DIR = IN_DIR + 'phased_tel_distmatrix/'
-	ALLELE_OUT_FN  = IN_DIR + 'phased_tel_results.tsv'
+	TRAINING_DIR   = IN_DIR + 'phased_tel_dist-train/'
+	ALLELE_OUT_FN  = IN_DIR + 'tlens_by_allele.tsv'
 
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.rc
@@ -89,15 +103,19 @@ def main(raw_args=None):
 	TEL_HUNTER_AVG      = args.th
 	GROUND_TRUTH_TLENS  = args.gt
 	TEL_SEQ_PLOTS       = args.tel_composition_plots
+	PLOT_DENOISED_CVECS = args.plot_denoised_tel
 	EXTRA_TLEN_PLOTS    = args.extra_tlen_plots
 	EXTRA_READLEN_PLOTS = args.extra_readlen_plots
 	EXTRA_READLEN_YMAX  = args.rl
+	TELOGATOR_PICKLE    = args.telogator_pickle
 	TREECUT_TSV         = args.tc
+	MIN_CANONICAL_FRAC  = args.cp/100.
 
 	if TEL_SEQ_PLOTS:
 		makedir(TELCOMP_DIR)
 		makedir(DENDROGRAM_DIR)
 		makedir(DISTMATRIX_DIR)
+		makedir(TRAINING_DIR)
 
 	KMER_FILE   = args.k
 	KMER_LIST   = []
@@ -110,37 +128,37 @@ def main(raw_args=None):
 		kmer_fn  = str(sim_path) + '/resources/plot_kmers.tsv'
 		f = open(kmer_fn,'r')
 		for line in f:
-			splt = line.strip().split('\t')
-			KMER_LIST.append(splt[1])
-			KMER_COLORS.append(splt[2])
-			rev_kmers.append(RC(splt[1]))
-			rev_colors.append(splt[2])
+			if line[0] != '#':
+				splt = line.strip().split('\t')
+				KMER_LIST.append(splt[1])
+				KMER_COLORS.append(splt[2])
+				rev_kmers.append(RC(splt[1]))
+				rev_colors.append(splt[2])
 		f.close()
-		KMER_LIST.extend([n for n in rev_kmers])
-		KMER_COLORS.extend([n for n in rev_colors])
 	else:
 		fn_suffix = KMER_FILE.split('/')[-1]
 		print('using user-specified kmer list:', fn_suffix)
 		if exists_and_is_nonzero(KMER_FILE):
 			f = open(KMER_FILE,'r')
 			for line in f:
-				splt = line.strip().split('\t')
-				KMER_LIST.append(splt[1])
-				KMER_COLORS.append(splt[2])
-				rev_kmers.append(RC(splt[1]))
-				rev_colors.append(splt[2])
+				if line[0] != '#':
+					splt = line.strip().split('\t')
+					KMER_LIST.append(splt[1])
+					KMER_COLORS.append(splt[2])
+					rev_kmers.append(RC(splt[1]))
+					rev_colors.append(splt[2])
 			f.close()
-			KMER_LIST.extend([n for n in rev_kmers])
-			KMER_COLORS.extend([n for n in rev_colors])
 		else:
 			print('Error: kmer list not found')
 			exit(1)
-	sorted_kmer_dat  = sorted([(len(KMER_LIST[n]),KMER_LIST[n],KMER_COLORS[n]) for n in range(len(KMER_LIST))], reverse=True)	# sort by length
+	sorted_kmer_dat  = sorted(list(set([(len(KMER_LIST[n]),KMER_LIST[n],KMER_COLORS[n]) for n in range(len(KMER_LIST))])), reverse=True)	# sort by length
 	KMER_LIST        = [n[1] for n in sorted_kmer_dat]
 	KMER_COLORS      = [n[2] for n in sorted_kmer_dat]
 	KMER_ISSUBSTRING = []
 	for i in range(len(KMER_LIST)):
 		KMER_ISSUBSTRING.append([j for j in range(len(KMER_LIST)) if (j != i and KMER_LIST[i] in KMER_LIST[j])])
+		#print(i, KMER_LIST[i], KMER_COLORS[i], KMER_ISSUBSTRING[-1])
+	KMER_LIST_REV = [RC(n) for n in KMER_LIST]
 
 	#
 	# read in ground truth values for plotting (e.g. for simulated data)
@@ -160,8 +178,16 @@ def main(raw_args=None):
 	if len(TREECUT_TSV):
 		f = open(TREECUT_TSV, 'r')
 		for line in f:
-			splt = line.strip().split('\t')
-			custom_treecut_vals[splt[0].replace('_','')] = float(splt[1])
+			if len(line.strip()):
+				splt = line.strip().split('\t')
+				if ':' in splt[0]:
+					splt2  = splt[0].split(':')
+					tc_chr = splt2[0]
+					tc_pos = int(splt2[1])
+				else:
+					tc_chr = splt[0].replace('_','')
+					tc_pos = None
+				custom_treecut_vals[(tc_chr, tc_pos)] = float(splt[1])
 		f.close()
 
 	#
@@ -214,7 +240,11 @@ def main(raw_args=None):
 	#  0    1             2              3           4            5             6     7
 	# [rnm, adjacent_pos, adjacent_span, my_tel_len, my_tel_type, tel_ref_span, rdat, alns_with_tel]
 
+	#
 	# filter out double-anchored telomeres
+	#
+	print('filtering out double-anchored tel regions...')
+	#
 	del_keys = []
 	for k in sorted(COMBINED_ANCHORS.keys()):
 		len_before_filtering = len(COMBINED_ANCHORS[k])
@@ -247,6 +277,7 @@ def main(raw_args=None):
 		del_list = sorted(del_list, reverse=True)
 		for di in del_list:
 			del COMBINED_ANCHORS[k][di]
+		del del_list
 		#print(k, len_before_filtering, '-->', len(COMBINED_ANCHORS[k]))
 		if len(COMBINED_ANCHORS[k]) == 0:
 			del_keys.append(k)
@@ -334,18 +365,45 @@ def main(raw_args=None):
 		#
 		sort_list = sorted([(COMBINED_ANCHORS[k][n][1], n) for n in range(len(COMBINED_ANCHORS[k]))])
 		clusters  = cluster_list(sort_list, ANCHOR_CLUSTER_DIST, which_val=0)
+		#
 		for cl in clusters:
+			pos_list = [n[0] for n in cl]
+			ind_list = [n[1] for n in cl]
+
 			#
-			clust_num += 1
-			pos_list   = [n[0] for n in cl]
-			ind_list   = [n[1] for n in cl]
-			my_pos     = int(np.mean(pos_list))
+			# remove reads with tel regions that do not contain a large enough fraction of canonical repeats
+			#
+			del_list = []
+			for di in range(len(ind_list)):
+				my_tlen = COMBINED_ANCHORS[k][ind_list[di]][3]
+				my_type = COMBINED_ANCHORS[k][ind_list[di]][4]
+				my_rdat = COMBINED_ANCHORS[k][ind_list[di]][6]
+				if my_chr[-1] == 'p':
+					if my_type == 'p':
+						my_telseq = my_rdat[:my_tlen]
+					elif my_type == 'q':
+						my_telseq = RC(my_rdat[-my_tlen:])
+				elif my_chr[-1] == 'q':
+					if my_type == 'p':
+						my_telseq = RC(my_rdat[:my_tlen])
+					elif my_type == 'q':
+						my_telseq = my_rdat[-my_tlen:]
+				my_canonical_frac = get_telomere_kmer_frac(my_telseq, ['CCCTAA', 'TTAGGG'], mode=READ_TYPE)
+				if my_canonical_frac < MIN_CANONICAL_FRAC:
+					del_list.append(di)
+			del_list = sorted(del_list, reverse=True)
+			for di in del_list:
+				del pos_list[di]
+				del ind_list[di]
+			del del_list
+
+			#
+			# determine which violin plots we will be contributing our data to
 			#
 			sorted_by_tlen = sorted([(COMBINED_ANCHORS[k][i][3], len(COMBINED_ANCHORS[k][i][6]), COMBINED_ANCHORS[k][i][0]) for i in ind_list])
-			my_tlens  = [n_sbtl[0] for n_sbtl in sorted_by_tlen]
-			my_rlens  = [n_sbtl[1] for n_sbtl in sorted_by_tlen]
-			my_rnames = [n_sbtl[2] for n_sbtl in sorted_by_tlen]
-			#
+			my_tlens       = [n_sbtl[0] for n_sbtl in sorted_by_tlen]
+			my_rlens       = [n_sbtl[1] for n_sbtl in sorted_by_tlen]
+			my_rnames      = [n_sbtl[2] for n_sbtl in sorted_by_tlen]
 			for i in range(len(my_rnames)):
 				my_rname = my_rnames[i]
 				if CHR_OR_ALT[my_rname] == 'chr' and len(cl) >= MIN_READS_PER_CLUST:
@@ -362,12 +420,17 @@ def main(raw_args=None):
 						READLEN_FILT[my_ind][my_chr]      = []
 					ANCHORED_TEL_FILT[my_ind][my_chr].append(my_tlens[i])
 					READLEN_FILT[my_ind][my_chr].append(my_rlens[i])
-			#
-			if len(cl) < MIN_READS_PER_CLUST:
-				continue
 
 			#
-			# output combined data for easier reprocessing if desired
+			# if the cluster does not enough reads lets skip it
+			#
+			if len(ind_list) < MIN_READS_PER_CLUST or len(ind_list) <= 0:
+				continue
+			my_pos = int(np.median(pos_list))
+			clust_num += 1
+
+			#
+			# output combined data for easier reprocessing by telogator.py if desired (e.g. for plotting individual reads / kmer densities)
 			#
 			for i in ind_list:
 				my_rnm  = COMBINED_ANCHORS[k][i][0]
@@ -406,9 +469,11 @@ def main(raw_args=None):
 			#
 			comp_data.append([sorted_ref_keys[ki][3], my_pos, [n for n in my_tlens]])
 
+			########################################################
 			#
 			# plot kmer composition of telomeres in this cluster
 			#
+			########################################################
 			if TEL_SEQ_PLOTS:
 				kmer_hit_dat    = []
 				for i in ind_list:
@@ -435,9 +500,13 @@ def main(raw_args=None):
 						if my_dbta == None or my_dbta < 0:
 							print('Error: we messed up trying to get your telomere-anchor dist:', k, i, my_dbta)
 					#
-					atb = my_tlen + my_dbta	# adjusted telomere boundary
+					# adjusted telomere boundary
+					#
+					atb = my_tlen + my_dbta + INCLUDE_SUBTEL_BUFF
+					atb = min(atb, len(my_rdat))					# in case something crazy happens
 					#
 					if my_chr[-1] == 'p':
+						kmers_to_use = KMER_LIST
 						if my_type == 'p':
 							my_telseq = my_rdat[:atb]
 							my_subseq = my_rdat[atb:]
@@ -445,6 +514,7 @@ def main(raw_args=None):
 							my_telseq = RC(my_rdat[-atb:])
 							my_subseq = RC(my_rdat[:-atb])
 					elif my_chr[-1] == 'q':
+						kmers_to_use = KMER_LIST_REV
 						if my_type == 'p':
 							my_telseq = RC(my_rdat[:atb])
 							my_subseq = RC(my_rdat[atb:])
@@ -468,7 +538,7 @@ def main(raw_args=None):
 					#
 					# kmer_hit_dat[-1][0][kmer_list_i] = hits in current read for kmer kmer_list_i
 					#
-					kmer_hit_dat.append([get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING), atb, my_dbta, my_type, my_rnm, my_mapq])
+					kmer_hit_dat.append([get_nonoverlapping_kmer_hits(my_telseq, kmers_to_use, KMER_ISSUBSTRING), atb, my_dbta, my_type, my_rnm, my_mapq])
 					#
 					# what are the unexplained sequences?
 					#
@@ -499,16 +569,31 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr14p':
-					dendrogram_fn = DENDROGRAM_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
-					distmatrix_fn = DISTMATRIX_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.npy'
-					if my_chr in custom_treecut_vals:
-						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=custom_treecut_vals[my_chr], msa_dir=IN_DIR)
-					else:
-						read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_COLORS, my_chr, dist_in=distmatrix_fn, fig_name=dendrogram_fn, msa_dir=IN_DIR)
+				if plotname_chr == 'chr4p':
+					zfcn = str(clust_num).zfill(2)
+					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
+					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
+					telcompplot_fn = TELCOMP_DIR    + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
+					telcompcons_fn = TELCOMP_DIR    + 'msa-'     + zfcn + '_' + plotname_chr + '.png'
+					traindata_pref = TRAINING_DIR   + 'cluster-' + zfcn + '_' + plotname_chr
+					#
+					my_tc = None
+					if (my_chr,None) in custom_treecut_vals:
+						my_tc = custom_treecut_vals[(my_chr,None)]
+					elif (my_chr,my_pos) in custom_treecut_vals:
+						my_tc = custom_treecut_vals[(my_chr,my_pos)]
+					#
+					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_LIST, KMER_COLORS, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref)
+					#
 					for allele_i in range(len(read_clust_dat[0])):
 						allele_readcount = len(read_clust_dat[0][allele_i])
-						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1], kmer_hit_dat[n][4]) for n in read_clust_dat[0][allele_i]])
+						#
+						# kmer_hit_dat[n][1]   = tlen + all the extra subtel buffers
+						# read_clust_dat[3][n] = the length of the subtel region present before tvr/tel region
+						#
+						# the difference of these two will be the actual size of the (tvr + tel) region in the read
+						#
+						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1] - read_clust_dat[3][n], kmer_hit_dat[n][5]) for n in read_clust_dat[0][allele_i]])
 						allele_tlens     = [n[0] for n in allele_tlen_mapq]
 						allele_tlen_str  = ','.join([str(n[0]) for n in allele_tlen_mapq])
 						mapq_str_out     = ','.join([str(n[1]) for n in allele_tlen_mapq])
@@ -527,28 +612,61 @@ def main(raw_args=None):
 						if allele_readcount >= MIN_READS_PER_PHASE:
 							if my_chr not in allele_count_by_chr:
 								allele_count_by_chr[my_chr] = 0
-							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_count_by_chr[my_chr]), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, read_clust_dat[3][allele_i]])
+							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_count_by_chr[my_chr]), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, read_clust_dat[4][allele_i]])
 							allele_count_by_chr[my_chr] += 1
-					plot_fn = TELCOMP_DIR + 'cluster-' + str(clust_num) + '_ref-' + plotname_chr + '.png'
-					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, plot_fn, clust_dat=read_clust_dat)
+					#
+					# adjust kmer_hit_dat based on the filters and etc that were applied during clustering
+					#
+					my_consensus_vecs = read_clust_dat[4]
+					my_color_vectors  = read_clust_dat[5]
+					my_end_err_lens   = read_clust_dat[6]
+					redrawn_kmerhits  = convert_colorvec_to_kmerhits(my_color_vectors, KMER_LIST, KMER_COLORS)
+					redrawn_consensus = convert_colorvec_to_kmerhits(my_consensus_vecs, KMER_LIST, KMER_COLORS)
+					if PLOT_DENOISED_CVECS:
+						for rdki in range(len(redrawn_kmerhits)):
+							kmer_hit_dat[rdki][0]  = redrawn_kmerhits[rdki]	# replace kmer hit tuples for plotting
+							kmer_hit_dat[rdki][1] -= my_end_err_lens[rdki]	# subtract size of artifacts at end of reads
+					#
+					consensus_kmer_hit_dat = []
+					consensus_clust_dat    = [[],[],[],[0]]	# fake data so that plot_kmer_hits doesn't complain
+					for rdki in range(len(redrawn_consensus)):
+						cons_readname = 'consensus-' + str(rdki) + ' [' + str(len(read_clust_dat[0][rdki]))
+						if len(read_clust_dat[0][rdki]) == 1:
+							cons_readname += ' read]'
+							continue
+						else:
+							cons_readname += ' reads]'
+						consensus_kmer_hit_dat.append([redrawn_consensus[rdki], len(my_consensus_vecs[rdki]), 0, 'FWD', cons_readname, DUMMY_TEL_MAPQ])
+						consensus_clust_dat[0].append([rdki])
+						consensus_clust_dat[1].append([DUMMY_TEL_MAPQ])
+						consensus_clust_dat[2].append([0])
+					#
+					# plotting!
+					#
+					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompplot_fn, xlim=[-1000,10000], clust_dat=read_clust_dat)
+					plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,10000], clust_dat=consensus_clust_dat)
 		print()
 	#
 	if TEL_SEQ_PLOTS:
 		f_entire.close()
 		f_subfasta.close()
 		f_telfasta.close()
+		#
 		f_allele = open(ALLELE_OUT_FN, 'w')
 		f_allele.write('#subtel' + '\t' + 'position' + '\t' + 'tlen_' + TL_METHOD + '\t')
 		f_allele.write('allele_num' + '\t' + 'allele_tlen_' + TL_METHOD_ALLELE + '\t' + 'allele_tlens' + '\t' + 'allele_reads_mapq' + '\t' + 'tel_adjacent_sequences_consensus' + '\n')
 		for i in range(len(ALLELE_CLUST_DAT)):
 			f_allele.write('\t'.join(ALLELE_CLUST_DAT[i]) + '\n')
 		f_allele.close()
+		#
+		os.system('cat ' + TRAINING_DIR + '*_tvrtel.tsv > ' + TRAINING_DIR + 'all-tvrtel.tsv')
 	f_out.close()
 
 	#
-	f = open(MERGED_ALNS, 'wb')
-	pickle.dump(COMBINED_ALN_DAT, f)
-	f.close()
+	if TELOGATOR_PICKLE:
+		f = open(MERGED_ALNS, 'wb')
+		pickle.dump(COMBINED_ALN_DAT, f)
+		f.close()
 
 	my_pm = True
 	if len(gt_tlen):

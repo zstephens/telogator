@@ -154,9 +154,9 @@ def plot_all_read_data(density_data, tl_vals, aln_dat, tel_window, f_title, fig_
 	mpl.close(fig)
 
 #
-#	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, read-orientation, readname]
+#	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, tel-anchor-dist, read_orientation, read_name, read_mapq]
 #
-def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
+def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, clust_dat=None):
 	which_tel = my_chr[-1]
 	max_tlen  = max([n[1] for n in kmer_dat])
 	n_reads   = len(kmer_dat)
@@ -166,15 +166,41 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 		read_clusters      = [list(range(n_reads))]
 		read_msa_offsets   = [[0]*n_reads]
 		total_rows_to_plot = n_reads
+		x_axis_adj         = 0
 	else:
 		read_clusters      = clust_dat[0]
 		read_anchor_mapq   = clust_dat[1]
 		read_msa_offsets   = clust_dat[2]
+		x_axis_adj         = max(clust_dat[3])	# longest subtel length
+		#largest_msa_off   = max([max(n) for n in read_msa_offsets])
 		total_rows_to_plot = n_reads + len(read_clusters)-1
 	#
 	# plotting
 	#
-	fig = mpl.figure(1, figsize=(15,8))
+	vert_fig_size = max(3, total_rows_to_plot * 0.33)
+	#
+	if which_tel == 'p':
+		if xlim != None:
+			xtt = [xlim[1]]
+			xtl = [-xlim[0]]
+			while xtt[-1] > xlim[0]:
+				xtt.append(xtt[-1] - X_STEP)
+				xtl.append(xtl[-1] - X_STEP)
+		else:
+			xtt = [max_tlen]
+			xtl = [0]
+			while xtt[-1] > X_STEP:
+				xtt.append(xtt[-1] - X_STEP)
+				xtl.append(xtl[-1] - X_STEP)
+	elif which_tel == 'q':
+		if xlim != None:
+			xtt = [n for n in range(xlim[0],xlim[1]+1,X_STEP)]
+			xtl = [n for n in range(xlim[0],xlim[1]+1,X_STEP)]
+		else:
+			xtt = [n for n in range(0,max_tlen,X_STEP)]
+			xtl = [n for n in range(0,max_tlen,X_STEP)]
+	#
+	fig = mpl.figure(1, figsize=(15,vert_fig_size))
 	reads_plotted_thus_far = 0
 	for clust_i in range(len(read_clusters)):
 		for i in range(len(read_clusters[clust_i])):
@@ -188,7 +214,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 				if which_tel == 'p':
 					ax1.yaxis.set_label_position("right")
 					ax1.yaxis.tick_right()
-				mpl.title(my_chr)
+				mpl.title(my_chr + ' : ' + str(my_pos))
 			else:
 				ax2 = mpl.subplot(total_rows_to_plot, 1, plot_i+1, sharex=ax1)
 				if plot_i < total_rows_to_plot-1:
@@ -200,9 +226,12 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 			for ki in range(len(my_kmer_hits)):
 				if len(my_kmer_hits[ki]):
 					if which_tel == 'p':
-						adj = max_tlen - my_tlen - msa_adj
+						if xlim != None:
+							adj = xlim[1]  - my_tlen - msa_adj + x_axis_adj + xlim[0]
+						else:
+							adj = max_tlen - my_tlen - msa_adj + x_axis_adj
 					else:
-						adj = 0 + msa_adj
+						adj = 0 + msa_adj - x_axis_adj
 					polygons = []
 					p_color  = []
 					p_alpha  = []
@@ -210,32 +239,31 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, fig_name, clust_dat=None):
 						xp = [kmer_span[0]+adj, kmer_span[1]+adj]
 						yp = [-1, 1]
 						polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+						#polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],(yp[0]+yp[1])/2.0] ]), closed=True))
 						p_color.append(kmer_colors[ki])
-						p_alpha.append(0.7)
+						p_alpha.append(0.8)
 					#
 					ax = mpl.gca()
 					for j in range(len(polygons)):
 						ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
 			mpl.yticks([0],['('+str(my_ind_all)+') '+my_rname])
 			mpl.ylim([-1,1])
+			#
+			if xlim != None:
+				mpl.xlim([xlim[0], xlim[1]])
+			else:
+				mpl.xlim([0, max_tlen])
+			mpl.xticks(xtt, xtl)
+			mpl.grid(axis='x', linestyle='--', alpha=0.6)
+			#
 			reads_plotted_thus_far += 1
 	#
-	mpl.xlim([0, max_tlen])
-	if which_tel == 'p':
-		xtt = [max_tlen]
-		xtl = [0]
-		while xtt[-1] > X_STEP:
-			xtt.append(xtt[-1] - X_STEP)
-			xtl.append(xtl[-1] - X_STEP)
-		mpl.xticks(xtt, xtl)
-	else:
-		xtt = range(0,max_tlen,X_STEP)
-		mpl.xticks(xtt, xtt)
 	mpl.xlabel('distance from subtelomere/telomere boundary (bp)')
 	mpl.tight_layout()
 	mpl.subplots_adjust(hspace=0.0)
-	#mpl.show()
-	#exit(1)
+	#if True:
+	#	mpl.show()
+	#	exit(1)
 	mpl.savefig(fig_name)
 	mpl.close(fig)
 
