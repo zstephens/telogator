@@ -15,8 +15,6 @@ from scipy.spatial.distance import pdist, squareform
 from source.tg_reader import TG_Reader
 from source.tg_util import exists_and_is_nonzero
 
-MUSCLE_EXE = '/Users/zach/opt/miniconda2/bin/muscle'
-
 # we're going to pretend each kmer color is an amino acid, so alignment tools behave themselves
 AMINO = ['A','C','D','E','F','G','H','I','K','L','M','N','P','Q','R','S','T','V','W','Y']
 AMINO_2_IND = {AMINO[i]:i for i in range(len(AMINO))}
@@ -86,7 +84,7 @@ def write_scoring_matrix(fn):
 	f.write('* -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  1' + '\n')
 	f.close()
 
-def get_muscle_msa(input_sequences, working_dir='', char_score_adj={}, max_gap_frac=0.60):
+def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={}, max_gap_frac=0.60):
 	# write sequences to a temp fasta
 	temp_fasta = working_dir + 'clust_sequences.fa'
 	f = open(temp_fasta, 'w')
@@ -101,7 +99,7 @@ def get_muscle_msa(input_sequences, working_dir='', char_score_adj={}, max_gap_f
 	write_scoring_matrix(matrix)
 	score_param = '-seqtype protein -gapopen -12.0 -gapextend -4.0 -center 0.0 -matrix ' + matrix
 	#score_param += ' -maxiters 2'	# use if muscle is crashing on "refining bipartite" steps
-	cmd = MUSCLE_EXE + ' -in ' + temp_fasta + ' -out ' + aln_fasta + ' ' + score_param + ' > ' + muscle_log + ' 2>&1'
+	cmd = muscle_exe + ' -in ' + temp_fasta + ' -out ' + aln_fasta + ' ' + score_param + ' > ' + muscle_log + ' 2>&1'
 	os.system(cmd)
 	# get results
 	out_seq   = []
@@ -318,6 +316,26 @@ def find_density_boundary(sequence, which_letter, win_size, dens_thresh, thresh_
 	#
 	return (sequence[:first_pos_below_thresh], sequence[first_pos_below_thresh:])
 
+def find_cumulative_boundary(sequence, which_letters, cum_thresh=0.05, min_hits=100):
+	hits = [1*(n in which_letters) for n in sequence]
+	hits_cum = np.cumsum(hits)
+	if hits_cum[-1] < min_hits:	# not enough hits to even bother trying
+		return len(sequence)
+	#
+	hits_cum = hits_cum/hits_cum[-1]
+	first_pos_below_thresh = len(sequence)
+	for i in range(len(hits_cum)):
+		if hits_cum[i] >= cum_thresh:
+			first_pos_below_thresh = i
+			break
+	####fig = mpl.figure(0)
+	####mpl.plot(list(range(len(hits_cum))), hits_cum)
+	####mpl.plot([first_pos_below_thresh, first_pos_below_thresh], [0,1], '--r')
+	####mpl.show()
+	####mpl.close(fig)
+	#
+	return first_pos_below_thresh
+
 def convert_colorvec_to_kmerhits(colorvecs, kmer_list, kmer_colors):
 	scolors  = sorted(list(set(kmer_colors)))
 	n_colors = len(scolors)
@@ -379,7 +397,7 @@ def denoise_colorvec(v, min_size=10, max_gap_fill=50, chars_to_delete=[], char_t
 #
 #	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, tel-anchor-dist, read-orientation, readname, anchor_mapq]
 #
-def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist_in=None, fig_name=None, msa_dir='', train_prefix=None, tvr_truncate=3000, tree_cut=None, alignment_processes=8):
+def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist_in=None, fig_name=None, msa_dir='', save_msa=None, train_prefix=None, tvr_truncate=3000, tree_cut=None, alignment_processes=8, muscle_exe='muscle'):
 	n_reads  = len(kmer_dat)
 	scolors  = sorted(list(set(kmer_colors)))
 	n_colors = len(scolors)
@@ -426,6 +444,20 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	                 cname_to_amino['darkblue'],
 	                 cname_to_amino['green'],
 	                 cname_to_amino['darkgreen']]
+	#
+	# which letters should count towards tvr when identifying tvr/tel boundary?
+	#
+	tvr_letters = [#cname_to_amino['limegreen'],
+	               #cname_to_amino['darkblue'],
+	               #cname_to_amino['green'],
+	               #cname_to_amino['darkgreen'],
+	               cname_to_amino['yellow'],
+	               cname_to_amino['khaki'],
+	               cname_to_amino['red'],
+	               cname_to_amino['darkred'],
+	               cname_to_amino['orange'],
+	               cname_to_amino['darkorange'],
+	               cname_to_amino['darkviolet']]
 	#
 	# identify subtel / tvr boundary
 	#
@@ -557,25 +589,43 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	#
 	# do MSA to get a consensus sequence
 	#
-	for i in range(len(out_clust)):
-		max_seq_len = max([len(tvrtel_regions[n]) for n in out_clust[i]])
-		for ci in out_clust[i]:
-			buff_seq = canonical_letter*(max_seq_len - len(tvrtel_regions[ci]))
-			if pq == 'p':
-				colorvecs_for_msa[ci] = buff_seq + colorvecs_for_msa[ci]
-			elif pq == 'q':
-				colorvecs_for_msa[ci] = colorvecs_for_msa[ci] + buff_seq
-	# the actual msa
-	out_adj       = []
 	out_consensus = []
-	for i in range(len(out_clust)):
-		if len(out_clust[i]) == 1:
-			out_consensus.append(colorvecs_for_msa[out_clust[i][0]])
-		else:
-			clust_seq = [colorvecs_for_msa[n] for n in out_clust[i]]
-			[msa_seq, consensus_seq] = get_muscle_msa(clust_seq, working_dir=msa_dir, char_score_adj=char_score_adj)
-			out_consensus.append(consensus_seq)
+	if save_msa == None or exists_and_is_nonzero(save_msa) == False:
+		for i in range(len(out_clust)):
+			max_seq_len = max([len(tvrtel_regions[n]) for n in out_clust[i]])
+			for ci in out_clust[i]:
+				buff_seq = canonical_letter*(max_seq_len - len(tvrtel_regions[ci]))
+				if pq == 'p':
+					colorvecs_for_msa[ci] = buff_seq + colorvecs_for_msa[ci]
+				elif pq == 'q':
+					colorvecs_for_msa[ci] = colorvecs_for_msa[ci] + buff_seq
+		# 
+		for i in range(len(out_clust)):
+			if len(out_clust[i]) == 1:
+				out_consensus.append(colorvecs_for_msa[out_clust[i][0]])
+			else:
+				clust_seq = [colorvecs_for_msa[n] for n in out_clust[i]]
+				[msa_seq, consensus_seq] = get_muscle_msa(clust_seq, muscle_exe, working_dir=msa_dir, char_score_adj=char_score_adj)
+				out_consensus.append(consensus_seq)
+		#
+		if save_msa != None:
+			f = open(save_msa,'w')
+			for i in range(len(out_consensus)):
+				f.write('>msa-' + str(i+1).zfill(2) + '\n')
+				f.write(out_consensus[i] + '\n')
+			f.close()
+	else:
+		my_reader = TG_Reader(save_msa, verbose=False)
+		while True:
+			read_dat = my_reader.get_next_read()
+			if not read_dat[0]:
+				break
+			out_consensus.append(read_dat[1])
+		my_reader.close()
+
+	#
 	# prune subtel from consensus
+	#
 	for i in range(len(out_consensus)):
 		if pq == 'p':
 			(cons_left, cons_right) = find_density_boundary(out_consensus[i][::-1], unknown_letter, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
@@ -583,6 +633,17 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 		elif pq == 'q':
 			(cons_left, cons_right) = find_density_boundary(out_consensus[i], unknown_letter, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
 			out_consensus[i] = cons_right
+	#
+	# identify tvr/tel boundary from consensus sequences
+	#
+	out_tvr_tel_boundaries = []
+	for i in range(len(out_consensus)):
+		denoised_consensus = denoise_colorvec(out_consensus[i], chars_to_delete=tvr_letters)
+		if pq == 'p':
+			tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters)
+		elif pq == 'q':
+			tel_boundary = find_cumulative_boundary(denoised_consensus[::-1], tvr_letters)
+		out_tvr_tel_boundaries.append(len(out_consensus[i]) - tel_boundary + 1)
 	#
 	# lets use tvr/subtel boundary as offset instead of msa offset
 	#
@@ -602,11 +663,10 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 		out_mapq.append([kmer_dat[m][5] for m in n])
 	#
 	print(out_clust)
-	print(out_mapq)
-	print(out_adj)
 	print(all_subtel_lens)
+	print(out_tvr_tel_boundaries)
 	#
-	return [ out_clust, out_mapq, out_adj, all_subtel_lens, out_consensus, cleaned_colorvecs, err_end_lens ]
+	return [ out_clust, out_mapq, out_adj, all_subtel_lens, out_consensus, cleaned_colorvecs, err_end_lens, out_tvr_tel_boundaries ]
 
 #
 #

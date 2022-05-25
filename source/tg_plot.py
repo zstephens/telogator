@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as mpl
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
+import matplotlib.lines as lines
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 
@@ -156,7 +157,7 @@ def plot_all_read_data(density_data, tl_vals, aln_dat, tel_window, f_title, fig_
 #
 #	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, tel-anchor-dist, read_orientation, read_name, read_mapq]
 #
-def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, clust_dat=None):
+def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, clust_dat=None, draw_boundaries=None):
 	which_tel = my_chr[-1]
 	max_tlen  = max([n[1] for n in kmer_dat])
 	n_reads   = len(kmer_dat)
@@ -215,6 +216,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 					ax1.yaxis.set_label_position("right")
 					ax1.yaxis.tick_right()
 				mpl.title(my_chr + ' : ' + str(my_pos))
+				current_ax = ax1
 			else:
 				ax2 = mpl.subplot(total_rows_to_plot, 1, plot_i+1, sharex=ax1)
 				if plot_i < total_rows_to_plot-1:
@@ -222,6 +224,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 				if which_tel == 'p':
 					ax2.yaxis.set_label_position("right")
 					ax2.yaxis.tick_right()
+				current_ax = ax2
 			#
 			for ki in range(len(my_kmer_hits)):
 				if len(my_kmer_hits[ki]):
@@ -246,6 +249,19 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 					ax = mpl.gca()
 					for j in range(len(polygons)):
 						ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
+			#
+			if draw_boundaries != None:
+				if which_tel == 'p':
+					if xlim != None:
+						draw_x = xlim[1] - draw_boundaries[clust_i] + x_axis_adj + xlim[0]
+					else:
+						draw_x = max_tlen - draw_boundaries[clust_i] + x_axis_adj
+				else:
+					draw_x = draw_boundaries[clust_i] - x_axis_adj
+				#mpl.plot([draw_x, draw_x], [-1,1], '-k', linewidth=3)
+				current_ax.add_line(lines.Line2D([draw_x, draw_x], [-1.5,1.5], color='black', linewidth=3, clip_on=False))
+
+			#
 			mpl.yticks([0],['('+str(my_ind_all)+') '+my_rname])
 			mpl.ylim([-1,1])
 			#
@@ -261,7 +277,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 	mpl.xlabel('distance from subtelomere/telomere boundary (bp)')
 	mpl.tight_layout()
 	mpl.subplots_adjust(hspace=0.0)
-	#if True:
+	#if my_chr == 'chr2p':
 	#	mpl.show()
 	#	exit(1)
 	mpl.savefig(fig_name)

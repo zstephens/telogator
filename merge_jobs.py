@@ -28,19 +28,20 @@ INCLUDE_SUBTEL_BUFF = 500	# how much into the subtel alignment should we conside
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='merge_jobs.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
 	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/',      help="* Path to telogator results directory")
-	parser.add_argument('-m',  type=str, required=False, default='hifi', metavar='[hifi]',         help="Type of reads (hifi, clr, ont)")
-	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',          help="Method for computing TL (mean/median/max/p90)")
+	parser.add_argument('-r',  type=str, required=False, default='hifi', metavar='[hifi]',         help="Type of reads (hifi, clr, ont)")
+	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',          help="Method for computing chr TL (mean/median/max/p90)")
 	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
 	parser.add_argument('-cp', type=int, required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%)")
 	parser.add_argument('-rc', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
 	parser.add_argument('-ra', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per phased allele")
-	parser.add_argument('-ta', type=str, required=False, default='max',  metavar='[max]',          help="Method for computing allele-TL (mean/median/max/p90)")
+	parser.add_argument('-ta', type=str, required=False, default='max',  metavar='[max]',          help="Method for computing allele TL (mean/median/max/p90)")
 	parser.add_argument('-tc', type=str, required=False, default='',     metavar='treecuts.tsv',   help="Custom treecut vals during allele clustering")
 	#
-	parser.add_argument('-th', type=int, required=False, default=0,      metavar='[0]',            help="TelomereHunter tel_content (for comparison)")
-	parser.add_argument('-gt', type=str, required=False, default='',     metavar='tlens.tsv',      help="Ground truth tel lens (for comparison)")
-	parser.add_argument('-rl', type=int, required=False, default=50000,  metavar='[50000]',        help="Maximum y-axis value for readlength violin plots")
-	parser.add_argument('-k',  type=str, required=False, default='',     metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
+	parser.add_argument('-th', type=int, required=False, default=0,        metavar='[0]',            help="TelomereHunter tel_content (for comparison)")
+	parser.add_argument('-gt', type=str, required=False, default='',       metavar='tlens.tsv',      help="Ground truth tel lens (for comparison)")
+	parser.add_argument('-rl', type=int, required=False, default=50000,    metavar='[50000]',        help="Maximum y-axis value for readlength violin plots")
+	parser.add_argument('-k',  type=str, required=False, default='',       metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
+	parser.add_argument('-m',  type=str, required=False, default='muscle', metavar='muscle',         help="/path/to/muscle executable")
 	#
 	parser.add_argument('--pbsim',                 required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
 	parser.add_argument('--tel-composition-plots', required=False, default=False,  action='store_true', help='Produce telomere sequence composition plots')
@@ -55,7 +56,7 @@ def main(raw_args=None):
 		IN_DIR += '/'
 	IN_PREFIX = 'tel-data'
 
-	READ_TYPE = args.m.lower()
+	READ_TYPE = args.r.lower()
 	if READ_TYPE not in ['hifi', 'clr', 'ont']:
 		print('Error: -m must be hifi, clr, or ont')
 		exit(1)
@@ -94,6 +95,7 @@ def main(raw_args=None):
 	DENDROGRAM_DIR = IN_DIR + 'phased_tel_dendrograms/'
 	DISTMATRIX_DIR = IN_DIR + 'phased_tel_distmatrix/'
 	TRAINING_DIR   = IN_DIR + 'phased_tel_dist-train/'
+	CONSENSUS_DIR  = IN_DIR + 'phased_tel_msa/'
 	ALLELE_OUT_FN  = IN_DIR + 'tlens_by_allele.tsv'
 
 	ANCHOR_CLUSTER_DIST = args.cd
@@ -110,12 +112,14 @@ def main(raw_args=None):
 	TELOGATOR_PICKLE    = args.telogator_pickle
 	TREECUT_TSV         = args.tc
 	MIN_CANONICAL_FRAC  = args.cp/100.
+	MUSCLE_EXE          = args.m
 
 	if TEL_SEQ_PLOTS:
 		makedir(TELCOMP_DIR)
 		makedir(DENDROGRAM_DIR)
 		makedir(DISTMATRIX_DIR)
 		makedir(TRAINING_DIR)
+		makedir(CONSENSUS_DIR)
 
 	KMER_FILE   = args.k
 	KMER_LIST   = []
@@ -569,13 +573,14 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if plotname_chr == 'chr4p':
+				if plotname_chr == 'chr3q':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
 					telcompplot_fn = TELCOMP_DIR    + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					telcompcons_fn = TELCOMP_DIR    + 'msa-'     + zfcn + '_' + plotname_chr + '.png'
 					traindata_pref = TRAINING_DIR   + 'cluster-' + zfcn + '_' + plotname_chr
+					consensus_fn   = CONSENSUS_DIR  + 'cluster-' + zfcn + '_' + plotname_chr + '.fa'
 					#
 					my_tc = None
 					if (my_chr,None) in custom_treecut_vals:
@@ -583,7 +588,7 @@ def main(raw_args=None):
 					elif (my_chr,my_pos) in custom_treecut_vals:
 						my_tc = custom_treecut_vals[(my_chr,my_pos)]
 					#
-					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_LIST, KMER_COLORS, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref)
+					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_LIST, KMER_COLORS, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref, save_msa=consensus_fn, muscle_exe=MUSCLE_EXE)
 					#
 					for allele_i in range(len(read_clust_dat[0])):
 						allele_readcount = len(read_clust_dat[0][allele_i])
@@ -620,6 +625,7 @@ def main(raw_args=None):
 					my_consensus_vecs = read_clust_dat[4]
 					my_color_vectors  = read_clust_dat[5]
 					my_end_err_lens   = read_clust_dat[6]
+					my_tvr_tel_bounds = read_clust_dat[7]
 					redrawn_kmerhits  = convert_colorvec_to_kmerhits(my_color_vectors, KMER_LIST, KMER_COLORS)
 					redrawn_consensus = convert_colorvec_to_kmerhits(my_consensus_vecs, KMER_LIST, KMER_COLORS)
 					if PLOT_DENOISED_CVECS:
@@ -629,22 +635,32 @@ def main(raw_args=None):
 					#
 					consensus_kmer_hit_dat = []
 					consensus_clust_dat    = [[],[],[],[0]]	# fake data so that plot_kmer_hits doesn't complain
+					consensus_tvr_tel_pos  = []
 					for rdki in range(len(redrawn_consensus)):
-						cons_readname = 'consensus-' + str(rdki) + ' [' + str(len(read_clust_dat[0][rdki]))
-						if len(read_clust_dat[0][rdki]) == 1:
+						cons_readcount = len(read_clust_dat[0][rdki])
+						cons_readname  = 'consensus-' + str(rdki) + ' [' + str(cons_readcount)
+						cons_tvrlen    = my_tvr_tel_bounds[rdki]
+						if cons_readcount == 1:
 							cons_readname += ' read]'
-							continue
 						else:
 							cons_readname += ' reads]'
-						consensus_kmer_hit_dat.append([redrawn_consensus[rdki], len(my_consensus_vecs[rdki]), 0, 'FWD', cons_readname, DUMMY_TEL_MAPQ])
-						consensus_clust_dat[0].append([rdki])
-						consensus_clust_dat[1].append([DUMMY_TEL_MAPQ])
-						consensus_clust_dat[2].append([0])
+						if cons_readcount >= MIN_READS_PER_PHASE:
+							consensus_kmer_hit_dat.append([redrawn_consensus[rdki], len(my_consensus_vecs[rdki]), 0, 'FWD', cons_readname, DUMMY_TEL_MAPQ])
+							consensus_clust_dat[0].append([rdki])
+							consensus_clust_dat[1].append([DUMMY_TEL_MAPQ])
+							consensus_clust_dat[2].append([0])
+							consensus_tvr_tel_pos.append(cons_tvrlen)
+							# for output data: trim consensus so that it only includes tvr
+							if cons_tvrlen <= 0:
+								ALLELE_CLUST_DAT[rdki][7] = ''
+							else:
+								ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][:cons_tvrlen]
 					#
 					# plotting!
 					#
 					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompplot_fn, xlim=[-1000,10000], clust_dat=read_clust_dat)
-					plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,10000], clust_dat=consensus_clust_dat)
+					if len(consensus_clust_dat[0]):
+						plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,10000], clust_dat=consensus_clust_dat, draw_boundaries=consensus_tvr_tel_pos)
 		print()
 	#
 	if TEL_SEQ_PLOTS:
@@ -654,7 +670,7 @@ def main(raw_args=None):
 		#
 		f_allele = open(ALLELE_OUT_FN, 'w')
 		f_allele.write('#subtel' + '\t' + 'position' + '\t' + 'tlen_' + TL_METHOD + '\t')
-		f_allele.write('allele_num' + '\t' + 'allele_tlen_' + TL_METHOD_ALLELE + '\t' + 'allele_tlens' + '\t' + 'allele_reads_mapq' + '\t' + 'tel_adjacent_sequences_consensus' + '\n')
+		f_allele.write('allele_num' + '\t' + 'allele_tlen_' + TL_METHOD_ALLELE + '\t' + 'allele_tlens' + '\t' + 'allele_reads_mapq' + '\t' + 'tvr_consensus' + '\n')
 		for i in range(len(ALLELE_CLUST_DAT)):
 			f_allele.write('\t'.join(ALLELE_CLUST_DAT[i]) + '\n')
 		f_allele.close()
