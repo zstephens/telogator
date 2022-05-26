@@ -573,7 +573,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr3q':
+				if True or plotname_chr == 'chr2p':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
@@ -591,13 +591,13 @@ def main(raw_args=None):
 					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_LIST, KMER_COLORS, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref, save_msa=consensus_fn, muscle_exe=MUSCLE_EXE)
 					#
 					for allele_i in range(len(read_clust_dat[0])):
-						allele_readcount = len(read_clust_dat[0][allele_i])
 						#
 						# kmer_hit_dat[n][1]   = tlen + all the extra subtel buffers
 						# read_clust_dat[3][n] = the length of the subtel region present before tvr/tel region
 						#
 						# the difference of these two will be the actual size of the (tvr + tel) region in the read
 						#
+						allele_readcount = len(read_clust_dat[0][allele_i])
 						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1] - read_clust_dat[3][n], kmer_hit_dat[n][5]) for n in read_clust_dat[0][allele_i]])
 						allele_tlens     = [n[0] for n in allele_tlen_mapq]
 						allele_tlen_str  = ','.join([str(n[0]) for n in allele_tlen_mapq])
@@ -614,10 +614,18 @@ def main(raw_args=None):
 							my_percentile = int(TL_METHOD_ALLELE[1:])
 							consensus_tl_allele = np.percentile(allele_tlens, my_percentile)
 						#
+						allele_tvrlen = read_clust_dat[7][allele_i]
+						allele_consensus_out = ''
+						if allele_tvrlen > 0:
+							if my_chr[-1] == 'p':	# will be reversed so its in subtel --> tvr --> tel orientation
+								allele_consensus_out = read_clust_dat[4][allele_i][-allele_tvrlen:][::-1]
+							elif my_chr[-1] == 'q':
+								allele_consensus_out = read_clust_dat[4][allele_i][:allele_tvrlen]
+						#
 						if allele_readcount >= MIN_READS_PER_PHASE:
 							if my_chr not in allele_count_by_chr:
 								allele_count_by_chr[my_chr] = 0
-							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_count_by_chr[my_chr]), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, read_clust_dat[4][allele_i]])
+							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_count_by_chr[my_chr]), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, allele_consensus_out])
 							allele_count_by_chr[my_chr] += 1
 					#
 					# adjust kmer_hit_dat based on the filters and etc that were applied during clustering
@@ -650,11 +658,14 @@ def main(raw_args=None):
 							consensus_clust_dat[1].append([DUMMY_TEL_MAPQ])
 							consensus_clust_dat[2].append([0])
 							consensus_tvr_tel_pos.append(cons_tvrlen)
-							# for output data: trim consensus so that it only includes tvr
-							if cons_tvrlen <= 0:
-								ALLELE_CLUST_DAT[rdki][7] = ''
-							else:
-								ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][:cons_tvrlen]
+							##### for output data: trim consensus so that it only includes tvr
+							####if cons_tvrlen <= 0:
+							####	ALLELE_CLUST_DAT[rdki][7] = ''
+							####elif my_chr[-1] == 'p':
+							####	ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][-cons_tvrlen:]
+							####	ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][::-1]
+							####elif my_chr[-1] == 'q':
+							####	ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][:cons_tvrlen]
 					#
 					# plotting!
 					#

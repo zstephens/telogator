@@ -449,7 +449,7 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	#
 	tvr_letters = [#cname_to_amino['limegreen'],
 	               #cname_to_amino['darkblue'],
-	               #cname_to_amino['green'],
+	               cname_to_amino['green'],
 	               #cname_to_amino['darkgreen'],
 	               cname_to_amino['yellow'],
 	               cname_to_amino['khaki'],
