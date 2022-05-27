@@ -573,7 +573,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr2p':
+				if True or plotname_chr == 'chrXq':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
@@ -658,20 +658,12 @@ def main(raw_args=None):
 							consensus_clust_dat[1].append([DUMMY_TEL_MAPQ])
 							consensus_clust_dat[2].append([0])
 							consensus_tvr_tel_pos.append(cons_tvrlen)
-							##### for output data: trim consensus so that it only includes tvr
-							####if cons_tvrlen <= 0:
-							####	ALLELE_CLUST_DAT[rdki][7] = ''
-							####elif my_chr[-1] == 'p':
-							####	ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][-cons_tvrlen:]
-							####	ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][::-1]
-							####elif my_chr[-1] == 'q':
-							####	ALLELE_CLUST_DAT[rdki][7] = ALLELE_CLUST_DAT[rdki][7][:cons_tvrlen]
 					#
 					# plotting!
 					#
-					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompplot_fn, xlim=[-1000,10000], clust_dat=read_clust_dat)
+					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompplot_fn, xlim=[-1000,15000], clust_dat=read_clust_dat)
 					if len(consensus_clust_dat[0]):
-						plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,10000], clust_dat=consensus_clust_dat, draw_boundaries=consensus_tvr_tel_pos)
+						plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,15000], clust_dat=consensus_clust_dat, draw_boundaries=consensus_tvr_tel_pos)
 		print()
 	#
 	if TEL_SEQ_PLOTS:

@@ -45,7 +45,7 @@ XMATCH_CANON = -4
 MATCH_UNKNOWN  = 0
 XMATCH_UNKNOWN = -4
 
-DEFAULT_TREECUT = 0.400
+DEFAULT_TREECUT = 0.300
 
 # density parameters for identifing subtel / tvr boundaries
 UNKNOWN_WIN_SIZE = 100
@@ -53,6 +53,8 @@ UNKNOWN_END_DENS = 0.120
 # density parameters for discerning canonical regions from sequencing artifacts
 CANON_WIN_SIZE = 100
 CANON_END_DENS = 0.700
+#
+MAX_TVR_LEN = 8000
 
 def write_scoring_matrix(fn):
 	f = open(fn, 'w')
@@ -213,16 +215,16 @@ def estimate_rand_score(seq1, seq2, aln_score, iden_score):
 		rand_score += LIN_REGRESSION_WEIGHTS[i]*feature_vector[i]
 	return int(rand_score)
 
-def parallel_alignment_job(our_indices, sequences, gap_bool, out_dict, p_or_q, scoring_matrix=None, train_out=None, estimate_rand=False):
+def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scoring_matrix=None, train_out=None, estimate_rand=False):
 	for (i,j) in our_indices:
 		#
 		min_len = min(len(sequences[i]), len(sequences[j]))
 		min_len = max(min_len, MIN_VIABLE_SEQ_LEN)
 		#
-		if p_or_q == 'p':
+		if pq == 'p':
 			seq_i = sequences[i][-min_len:]
 			seq_j = sequences[j][-min_len:]
-		elif p_or_q == 'q':
+		elif pq == 'q':
 			seq_i = sequences[i][:min_len]
 			seq_j = sequences[j][:min_len]
 		#
@@ -535,7 +537,7 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 				train_handl.append(job_fn)
 				f = open(job_fn, 'w')
 				f.close()
-			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], tvrtel_regions, (True,True), tvrtel_dist, pq, None, train_handl[-1]))
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], tvrtel_regions, (True,True), pq, tvrtel_dist, None, train_handl[-1]))
 			processes.append(p)
 		for i in range(alignment_processes):
 			processes[i].start()
@@ -638,7 +640,14 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	#
 	out_tvr_tel_boundaries = []
 	for i in range(len(out_consensus)):
-		denoised_consensus = denoise_colorvec(out_consensus[i], chars_to_delete=tvr_letters)
+		if len(out_consensus[i]) > MAX_TVR_LEN:
+			if pq == 'p':
+				denoised_consensus = canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN) + out_consensus[i][-MAX_TVR_LEN:]
+			elif pq == 'q':
+				denoised_consensus = out_consensus[i][:MAX_TVR_LEN] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN)
+			denoised_consensus = denoise_colorvec(denoised_consensus, chars_to_delete=tvr_letters)
+		else:
+			denoised_consensus = denoise_colorvec(out_consensus[i], chars_to_delete=tvr_letters)
 		if pq == 'p':
 			tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters)
 		elif pq == 'q':
@@ -671,9 +680,9 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 #
 #
 #
-def cluster_consensus_tel(sequences, dist_in=None, dist_out=None, fig_name=None, samp_labels=None, tree_cut=0.20, alignment_processes=8):
+def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=None, tree_cut=0.20, alignment_processes=8):
 	n_seq = len(sequences)
-	if dist_in == None:
+	if dist_in == None or exists_and_is_nonzero(dist_in) == False:
 		dist_matrix = np.zeros((n_seq,n_seq))
 		pw2_gap     = (False, False)
 		all_indices = [[] for n in range(alignment_processes)]
@@ -687,7 +696,7 @@ def cluster_consensus_tel(sequences, dist_in=None, dist_out=None, fig_name=None,
 		return_dict = manager.dict()
 		processes   = []
 		for i in range(alignment_processes):
-			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, return_dict))
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, 'q', return_dict))
 			processes.append(p)
 		for i in range(alignment_processes):
 			processes[i].start()
@@ -700,8 +709,8 @@ def cluster_consensus_tel(sequences, dist_in=None, dist_out=None, fig_name=None,
 			dist_matrix[j,i] = return_dict[(i,j)]
 		dist_norm    = max(np.max(dist_matrix), MIN_MSD)
 		dist_matrix /= dist_norm
-		if dist_out != None:
-			np.save(dist_out, dist_matrix)
+		if dist_in != None:
+			np.save(dist_in, dist_matrix)
 	else:
 		dist_matrix = np.load(dist_in, allow_pickle=True)
 	#
