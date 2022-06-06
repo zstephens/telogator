@@ -573,7 +573,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chrXq':
+				if True or plotname_chr == 'chr1p':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'

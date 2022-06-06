@@ -45,7 +45,7 @@ XMATCH_CANON = -4
 MATCH_UNKNOWN  = 0
 XMATCH_UNKNOWN = -4
 
-DEFAULT_TREECUT = 0.300
+DEFAULT_TREECUT = 0.250
 
 # density parameters for identifing subtel / tvr boundaries
 UNKNOWN_WIN_SIZE = 100
@@ -454,11 +454,12 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	               cname_to_amino['green'],
 	               #cname_to_amino['darkgreen'],
 	               cname_to_amino['yellow'],
+	               cname_to_amino['tan'],
 	               cname_to_amino['khaki'],
 	               cname_to_amino['red'],
-	               cname_to_amino['darkred'],
 	               cname_to_amino['orange'],
 	               cname_to_amino['darkorange'],
+	               cname_to_amino['violet'],
 	               cname_to_amino['darkviolet']]
 	#
 	# identify subtel / tvr boundary

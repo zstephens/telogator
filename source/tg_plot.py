@@ -211,7 +211,8 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 			plot_i  = clust_i + reads_plotted_thus_far
 			if plot_i == 0:
 				ax1 = mpl.subplot(total_rows_to_plot, 1, plot_i+1)
-				mpl.setp(ax1.get_xticklabels(), visible=False)
+				if n_reads > 1:
+					mpl.setp(ax1.get_xticklabels(), visible=False)
 				if which_tel == 'p':
 					ax1.yaxis.set_label_position("right")
 					ax1.yaxis.tick_right()

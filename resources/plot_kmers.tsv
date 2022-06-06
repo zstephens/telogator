@@ -6,19 +6,27 @@ p	CCCCTA	darkblue
 #p	CCCCTAA	darkblue
 #p	CCCTAAA	darkblue
 #p	CCCCCTAA	darkblue
+p	CCCTTA	turquoise
+p	CCCTTAA	turquoise
+#
 p	CCCCCA	limegreen
 p	CCCCAA	green
 p	CCCAA	darkgreen
 p	CCCA	darkgreen
 p	CCAA	darkgreen
-p	CCCTCA	yellow
-p	CCCTCG	yellow
-p	CCCTCTAA	khaki
-p	CCCTGA	red
-p	CCCGAA	darkred
-p	CCCGA	darkred
+#
 p	CCCTAG	orange
 p	CCTAG	darkorange
-p	CCCTTA	darkviolet
-p	CCCTTAA	darkviolet
+#
+p	CCCTCA	yellow
+#
+p	CCCTCG	tan
+#
+p	CCCTGA	red
+#
+p	CCCGAA	violet
+p	CCCGA	darkviolet
+#
+p	CCCTCTAA	khaki
+#
 p	CCCCCC	gray
