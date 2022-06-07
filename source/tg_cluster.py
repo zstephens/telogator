@@ -55,9 +55,10 @@ CANON_WIN_SIZE = 100
 CANON_END_DENS = 0.700
 # parameters for determining tvr / canonical boundaries: (denoise_region_size, cum_thresh, min_hits)
 TVR_CANON_FILT_PARAMS_STRICT  = (10, 0.05, 100)
-TVR_CANON_FILT_PARAMS_LENIENT = ( 5, 0.10,  50)
+TVR_CANON_FILT_PARAMS_LENIENT = ( 5, 0.20,  50)
 #
-MAX_TVR_LEN = 8000
+MAX_TVR_LEN       = 8000	# ignore variant repeats past this point when finding TVR boundary
+MAX_TVR_LEN_SHORT = 3000	# when examining  TVRs with very few variant repeats
 
 def write_scoring_matrix(fn):
 	f = open(fn, 'w')
@@ -103,7 +104,7 @@ def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={
 	matrix      = working_dir + 'scoring_matrix.txt'
 	write_scoring_matrix(matrix)
 	score_param = '-seqtype protein -gapopen -12.0 -gapextend -4.0 -center 0.0 -matrix ' + matrix
-	#score_param += ' -maxiters 2'	# use if muscle is crashing on "refining bipartite" steps
+	score_param += ' -maxiters 2'	# use if muscle is crashing on "refining bipartite" steps
 	cmd = muscle_exe + ' -in ' + temp_fasta + ' -out ' + aln_fasta + ' ' + score_param + ' > ' + muscle_log + ' 2>&1'
 	os.system(cmd)
 	# get results
@@ -424,6 +425,10 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 		if kmer_list[i] in ['CCCTAA', 'TTAGGG']:
 			canonical_letter = AMINO[col_2_sc[kmer_colors[i]]+1]
 		cname_to_amino[kmer_colors[i]] = AMINO[col_2_sc[kmer_colors[i]]+1]
+	#print_cname = sorted([(cname_to_amino[n],n) for n in cname_to_amino.keys()])
+	#for n in print_cname:
+	#	print(n[0], n[1])
+	#exit(1)
 	if canonical_letter == None:
 		print('Error: cluster_tel_sequences() received a kmer list that does not have CCCTAA or TTAGGG')
 		exit(1)
@@ -445,25 +450,19 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	#
 	# pacbio-specific denoising parameters
 	#
-	denoise_chars = [cname_to_amino['gray'],
-	                 cname_to_amino['darkblue'],
-	                 cname_to_amino['green'],
-	                 cname_to_amino['darkgreen']]
+	denoise_cols  = ['gray', 'darlblue', 'green', 'darkgreen']
+	denoise_chars = []
+	for c in denoise_cols:
+		if c in cname_to_amino:
+			denoise_chars.append(cname_to_amino[c])
 	#
 	# which letters should count towards tvr when identifying tvr/tel boundary?
 	#
-	tvr_letters = [#cname_to_amino['limegreen'],
-	               #cname_to_amino['darkblue'],
-	               cname_to_amino['green'],
-	               #cname_to_amino['darkgreen'],
-	               cname_to_amino['yellow'],
-	               cname_to_amino['tan'],
-	               cname_to_amino['khaki'],
-	               cname_to_amino['red'],
-	               cname_to_amino['orange'],
-	               cname_to_amino['darkorange'],
-	               cname_to_amino['violet'],
-	               cname_to_amino['darkviolet']]
+	tvr_cols = ['green', 'yellow', 'tan', 'khaki', 'red', 'orange', 'darkorange', 'violet', 'darkviolet', 'turquoise']
+	tvr_letters = []
+	for c in tvr_cols:
+		if c in cname_to_amino:
+			tvr_letters.append(cname_to_amino[c])
 	#
 	# identify subtel / tvr boundary
 	#
@@ -651,13 +650,21 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 				current_cons = out_consensus[i][:MAX_TVR_LEN] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN)
 		else:
 			current_cons = out_consensus[i]
-		#
 		denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_STRICT[0])
 		if pq == 'q':
 			denoised_consensus = denoised_consensus[::-1]
 		tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters, cum_thresh=TVR_CANON_FILT_PARAMS_STRICT[1], min_hits=TVR_CANON_FILT_PARAMS_STRICT[2])
 		#
+		#
+		#
 		if tel_boundary == len(out_consensus[i])+1:	# failed to find tel boundary, try again with lenient params
+			if len(out_consensus[i]) > MAX_TVR_LEN_SHORT:
+				if pq == 'p':
+					current_cons = canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN_SHORT) + out_consensus[i][-MAX_TVR_LEN_SHORT:]
+				elif pq == 'q':
+					current_cons = out_consensus[i][:MAX_TVR_LEN_SHORT] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN_SHORT)
+			else:
+				current_cons = out_consensus[i]
 			denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_LENIENT[0])
 			if pq == 'q':
 				denoised_consensus = denoised_consensus[::-1]
