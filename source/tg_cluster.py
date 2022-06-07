@@ -53,6 +53,9 @@ UNKNOWN_END_DENS = 0.120
 # density parameters for discerning canonical regions from sequencing artifacts
 CANON_WIN_SIZE = 100
 CANON_END_DENS = 0.700
+# parameters for determining tvr / canonical boundaries: (denoise_region_size, cum_thresh, min_hits)
+TVR_CANON_FILT_PARAMS_STRICT  = (10, 0.05, 100)
+TVR_CANON_FILT_PARAMS_LENIENT = ( 5, 0.10,  50)
 #
 MAX_TVR_LEN = 8000
 
@@ -643,16 +646,23 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	for i in range(len(out_consensus)):
 		if len(out_consensus[i]) > MAX_TVR_LEN:
 			if pq == 'p':
-				denoised_consensus = canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN) + out_consensus[i][-MAX_TVR_LEN:]
+				current_cons = canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN) + out_consensus[i][-MAX_TVR_LEN:]
 			elif pq == 'q':
-				denoised_consensus = out_consensus[i][:MAX_TVR_LEN] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN)
-			denoised_consensus = denoise_colorvec(denoised_consensus, chars_to_delete=tvr_letters)
+				current_cons = out_consensus[i][:MAX_TVR_LEN] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN)
 		else:
-			denoised_consensus = denoise_colorvec(out_consensus[i], chars_to_delete=tvr_letters)
-		if pq == 'p':
-			tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters)
-		elif pq == 'q':
-			tel_boundary = find_cumulative_boundary(denoised_consensus[::-1], tvr_letters)
+			current_cons = out_consensus[i]
+		#
+		denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_STRICT[0])
+		if pq == 'q':
+			denoised_consensus = denoised_consensus[::-1]
+		tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters, cum_thresh=TVR_CANON_FILT_PARAMS_STRICT[1], min_hits=TVR_CANON_FILT_PARAMS_STRICT[2])
+		#
+		if tel_boundary == len(out_consensus[i])+1:	# failed to find tel boundary, try again with lenient params
+			denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_LENIENT[0])
+			if pq == 'q':
+				denoised_consensus = denoised_consensus[::-1]
+			tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters, cum_thresh=TVR_CANON_FILT_PARAMS_LENIENT[1], min_hits=TVR_CANON_FILT_PARAMS_LENIENT[2])
+			#print('LENIENT TVR BOUNDARY (cluster '+str(i)+'):', len(out_consensus[i]) - tel_boundary + 1)
 		out_tvr_tel_boundaries.append(len(out_consensus[i]) - tel_boundary + 1)
 	#
 	# lets use tvr/subtel boundary as offset instead of msa offset

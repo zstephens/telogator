@@ -33,7 +33,7 @@ def main(raw_args=None):
 	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
 	parser.add_argument('-cp', type=int, required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%)")
 	parser.add_argument('-rc', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
-	parser.add_argument('-ra', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per phased allele")
+	parser.add_argument('-ra', type=int, required=False, default=3,      metavar='[3]',            help="Minimum number of reads per phased allele")
 	parser.add_argument('-ta', type=str, required=False, default='max',  metavar='[max]',          help="Method for computing allele TL (mean/median/max/p90)")
 	parser.add_argument('-tc', type=str, required=False, default='',     metavar='treecuts.tsv',   help="Custom treecut vals during allele clustering")
 	#
@@ -573,7 +573,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr1p':
+				if True or plotname_chr == 'chr5q':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
