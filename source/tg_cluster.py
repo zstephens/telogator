@@ -58,7 +58,7 @@ TVR_CANON_FILT_PARAMS_STRICT  = (10, 0.05, 100)
 TVR_CANON_FILT_PARAMS_LENIENT = ( 5, 0.20,  50)
 #
 MAX_TVR_LEN       = 8000	# ignore variant repeats past this point when finding TVR boundary
-MAX_TVR_LEN_SHORT = 3000	# when examining  TVRs with very few variant repeats
+MAX_TVR_LEN_SHORT = 3000	# when examining TVRs with very few variant repeats
 
 def write_scoring_matrix(fn):
 	f = open(fn, 'w')
@@ -120,6 +120,7 @@ def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={
 	out_seq = [n[1] for n in sorted(out_seq)]
 	####for n in out_seq:
 	####	print(n)
+	####exit(1)
 	# cleanup
 	os.system('rm ' + temp_fasta)
 	os.system('rm ' + aln_fasta)
@@ -190,14 +191,16 @@ def shuffle_seq(s):
 	return ''.join(random.sample(s,len(s)))
 
 #
-LIN_REGRESSION_WEIGHTS = [-230098081766.85144,
-                           982431961327.3054,
-                           0.0323486328125,
-                          -150466775912.59314,
-                           1.0552520751953125,
-                          -0.5465235710144043,
-                           5.6091461181640625]
-LIN_REGRESSION_BIAS = -69.55784684450964
+# linear regression parameters for estimating rand alignment score
+#
+RAND_REG_BIAS    =  82.745688430256450
+RAND_REG_WEIGHTS = [ 0.318626543939361,
+                    -0.109363196930245,
+                     0.049521602321889,
+                    -0.546815984651203,
+                     0.058014516390758,
+                    -1.595058825106752,
+                     6.719760869407775]
 #
 def estimate_rand_score(seq1, seq2, aln_score, iden_score):
 	c1 = Counter(seq1)
@@ -214,9 +217,9 @@ def estimate_rand_score(seq1, seq2, aln_score, iden_score):
 	len_min        = min(len(seq1), len(seq2))
 	len_max        = max(len(seq1), len(seq2))
 	feature_vector = [len_min, len_max, aln_score, iden_score, all_common, a_common, c_common]
-	rand_score = LIN_REGRESSION_BIAS
+	rand_score = RAND_REG_BIAS
 	for i in range(len(feature_vector)):
-		rand_score += LIN_REGRESSION_WEIGHTS[i]*feature_vector[i]
+		rand_score += RAND_REG_WEIGHTS[i]*feature_vector[i]
 	return int(rand_score)
 
 def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scoring_matrix=None, train_out=None, estimate_rand=False):
@@ -597,9 +600,9 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	out_consensus = []
 	if save_msa == None or exists_and_is_nonzero(save_msa) == False:
 		for i in range(len(out_clust)):
-			max_seq_len = max([len(tvrtel_regions[n]) for n in out_clust[i]])
+			max_seq_len = max([len(colorvecs_for_msa[n]) for n in out_clust[i]])
 			for ci in out_clust[i]:
-				buff_seq = canonical_letter*(max_seq_len - len(tvrtel_regions[ci]))
+				buff_seq = canonical_letter*(max_seq_len - len(colorvecs_for_msa[ci]))
 				if pq == 'p':
 					colorvecs_for_msa[ci] = buff_seq + colorvecs_for_msa[ci]
 				elif pq == 'q':

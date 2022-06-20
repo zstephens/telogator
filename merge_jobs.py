@@ -340,8 +340,7 @@ def main(raw_args=None):
 	#
 	#
 	#
-	f_out = open(OUT_TSV, 'w')
-	f_out.write('#subtel' + '\t' + 'position' + '\t' + 'tlen_' + TL_METHOD + '\t' + 'tel_lens' + '\t' + 'read_lens' + '\n')
+	CHR_TEL_DAT = []
 	#
 	if TEL_SEQ_PLOTS:
 		f_telfasta = open(TEL_SEQUENCES_FASTA, 'w')
@@ -469,7 +468,11 @@ def main(raw_args=None):
 				my_percentile = int(TL_METHOD[1:])
 				consensus_tl = np.percentile(my_tlens, my_percentile)
 
-			f_out.write(sorted_ref_keys[ki][3] + '\t' + str(my_pos) + '\t' + str(int(consensus_tl)) + '\t' + ','.join([str(n) for n in my_tlens]) + '\t' + ','.join([str(n) for n in my_rlens]) + '\n')
+			CHR_TEL_DAT.append([sorted_ref_keys[ki][3],
+			                    str(my_pos),
+			                    str(int(consensus_tl)),
+			                    ','.join([str(n) for n in my_tlens]),
+			                    ','.join([str(n) for n in my_rlens])])
 			#
 			comp_data.append([sorted_ref_keys[ki][3], my_pos, [n for n in my_tlens]])
 
@@ -479,13 +482,16 @@ def main(raw_args=None):
 			#
 			########################################################
 			if TEL_SEQ_PLOTS:
-				kmer_hit_dat    = []
+				kmer_hit_dat = []
+				rlens_out    = []
 				for i in ind_list:
 					my_rnm  = COMBINED_ANCHORS[k][i][0]
 					my_tlen = COMBINED_ANCHORS[k][i][3]
 					my_type = COMBINED_ANCHORS[k][i][4]
 					my_rdat = COMBINED_ANCHORS[k][i][6]
 					my_alns = COMBINED_ANCHORS[k][i][7]
+					#
+					rlens_out.append(len(my_rdat))
 					#
 					my_mapq    = None
 					my_dbta    = None	# distance between telomere and anchor
@@ -573,7 +579,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr5q':
+				if True or plotname_chr == 'chr3p':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
@@ -592,16 +598,25 @@ def main(raw_args=None):
 					#
 					for allele_i in range(len(read_clust_dat[0])):
 						#
+						allele_tvrlen        = read_clust_dat[7][allele_i]
+						allele_consensus_out = ''
+						if allele_tvrlen > 0:
+							if my_chr[-1] == 'p':	# p will be reversed so its in subtel --> tvr --> tel orientation
+								allele_consensus_out = read_clust_dat[4][allele_i][-allele_tvrlen:][::-1]
+							elif my_chr[-1] == 'q':
+								allele_consensus_out = read_clust_dat[4][allele_i][:allele_tvrlen]
+						#
 						# kmer_hit_dat[n][1]   = tlen + all the extra subtel buffers
 						# read_clust_dat[3][n] = the length of the subtel region present before tvr/tel region
 						#
 						# the difference of these two will be the actual size of the (tvr + tel) region in the read
 						#
 						allele_readcount = len(read_clust_dat[0][allele_i])
-						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1] - read_clust_dat[3][n], kmer_hit_dat[n][5]) for n in read_clust_dat[0][allele_i]])
-						allele_tlens     = [n[0] for n in allele_tlen_mapq]
-						allele_tlen_str  = ','.join([str(n[0]) for n in allele_tlen_mapq])
-						mapq_str_out     = ','.join([str(n[1]) for n in allele_tlen_mapq])
+						allele_tlen_mapq = sorted([(kmer_hit_dat[n][1] - read_clust_dat[3][n], rlens_out[n], kmer_hit_dat[n][5]) for n in read_clust_dat[0][allele_i]])
+						allele_tlens     = [n[0]-len(allele_consensus_out) for n in allele_tlen_mapq]	# subtracting tvr so that "actual" TL is output. values can be negative
+						allele_tlen_str  = ','.join([str(n) for n in allele_tlens])
+						rlen_str         = ','.join([str(n[1]) for n in allele_tlen_mapq])
+						mapq_str         = ','.join([str(n[2]) for n in allele_tlen_mapq])
 						#
 						consensus_tl_allele = None
 						if TL_METHOD_ALLELE == 'mean':
@@ -614,18 +629,18 @@ def main(raw_args=None):
 							my_percentile = int(TL_METHOD_ALLELE[1:])
 							consensus_tl_allele = np.percentile(allele_tlens, my_percentile)
 						#
-						allele_tvrlen = read_clust_dat[7][allele_i]
-						allele_consensus_out = ''
-						if allele_tvrlen > 0:
-							if my_chr[-1] == 'p':	# will be reversed so its in subtel --> tvr --> tel orientation
-								allele_consensus_out = read_clust_dat[4][allele_i][-allele_tvrlen:][::-1]
-							elif my_chr[-1] == 'q':
-								allele_consensus_out = read_clust_dat[4][allele_i][:allele_tvrlen]
-						#
 						if allele_readcount >= MIN_READS_PER_PHASE:
 							if my_chr not in allele_count_by_chr:
 								allele_count_by_chr[my_chr] = 0
-							ALLELE_CLUST_DAT.append([my_chr, str(my_pos), str(int(consensus_tl)), str(allele_count_by_chr[my_chr]), str(int(consensus_tl_allele)), allele_tlen_str, mapq_str_out, allele_consensus_out])
+							ALLELE_CLUST_DAT.append([my_chr,
+								                    str(my_pos),
+								                    str(allele_count_by_chr[my_chr]),
+								                    str(int(consensus_tl_allele)),
+								                    allele_tlen_str,
+								                    rlen_str,
+								                    mapq_str,
+								                    str(len(allele_consensus_out)),
+								                    allele_consensus_out])
 							allele_count_by_chr[my_chr] += 1
 					#
 					# adjust kmer_hit_dat based on the filters and etc that were applied during clustering
@@ -666,20 +681,29 @@ def main(raw_args=None):
 						plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,15000], clust_dat=consensus_clust_dat, draw_boundaries=consensus_tvr_tel_pos)
 		print()
 	#
+	# write chr-level output (old telogator)
+	#
+	f_chr = open(OUT_TSV, 'w')
+	f_chr.write('#chr' + '\t' + 'position' + '\t' + 'TL_' + TL_METHOD + '\t' + 'read_TLs' + '\t' + 'read_lengths' + '\n')
+	for i in range(len(CHR_TEL_DAT)):
+		f_chr.write('\t'.join(CHR_TEL_DAT[i]) + '\n')
+	f_chr.close()
+	#
+	# write allele-level output
+	#
 	if TEL_SEQ_PLOTS:
 		f_entire.close()
 		f_subfasta.close()
 		f_telfasta.close()
 		#
 		f_allele = open(ALLELE_OUT_FN, 'w')
-		f_allele.write('#subtel' + '\t' + 'position' + '\t' + 'tlen_' + TL_METHOD + '\t')
-		f_allele.write('allele_num' + '\t' + 'allele_tlen_' + TL_METHOD_ALLELE + '\t' + 'allele_tlens' + '\t' + 'allele_reads_mapq' + '\t' + 'tvr_consensus' + '\n')
+		f_allele.write('#chr' + '\t' + 'position' + '\t')
+		f_allele.write('allele_num' + '\t' + 'allele_TL_' + TL_METHOD_ALLELE + '\t' + 'read_allele_TLs' + '\t' + 'read_lengths' + '\t' + 'read_MAPQ' + '\t' + 'TVR_length' + '\t' + 'TVR_consensus' + '\n')
 		for i in range(len(ALLELE_CLUST_DAT)):
 			f_allele.write('\t'.join(ALLELE_CLUST_DAT[i]) + '\n')
 		f_allele.close()
 		#
 		os.system('cat ' + TRAINING_DIR + '*_tvrtel.tsv > ' + TRAINING_DIR + 'all-tvrtel.tsv')
-	f_out.close()
 
 	#
 	if TELOGATOR_PICKLE:
