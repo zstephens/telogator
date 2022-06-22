@@ -701,7 +701,7 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 #
 #
 #
-def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=None, tree_cut=0.20, alignment_processes=8):
+def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=None, tree_cut=0.20, alignment_processes=8, job=(1,1)):
 	n_seq = len(sequences)
 	if dist_in == None or exists_and_is_nonzero(dist_in) == False:
 		dist_matrix = np.zeros((n_seq,n_seq))
@@ -712,6 +712,21 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 			for j in range(i+1,n_seq):
 				all_indices[k%alignment_processes].append((i,j))
 				k += 1
+		#
+		#	even more parallelization! Any problem can be solved by throwing tons of CPU at it.
+		#
+		if job[1] > 1:
+			my_job = job[0]-1
+			chunks = job[1]
+			for i in range(alignment_processes):
+				chunksize = int(len(all_indices[i])/chunks)
+				chunks_by_job = []
+				for j in range(chunks):
+					if j == chunks-1:
+						chunks_by_job.append(all_indices[i][j*chunksize:])
+					else:
+						chunks_by_job.append(all_indices[i][j*chunksize:(j+1)*chunksize])
+				all_indices[i] = [n for n in chunks_by_job[my_job]]
 		#
 		manager     = multiprocessing.Manager()
 		return_dict = manager.dict()
@@ -728,28 +743,35 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 		for (i,j) in return_dict.keys():
 			dist_matrix[i,j] = return_dict[(i,j)]
 			dist_matrix[j,i] = return_dict[(i,j)]
-		dist_norm    = max(np.max(dist_matrix), MIN_MSD)
-		dist_matrix /= dist_norm
-		if dist_in != None:
-			np.save(dist_in, dist_matrix)
+		if job[1] > 1:
+			partial_dist_fn = dist_in[:-4] + '_job' + str(job[0]).zfill(3) + '.npy'
+			np.save(partial_dist_fn, dist_matrix)
+		else:
+			dist_norm    = max(np.max(dist_matrix), MIN_MSD)
+			dist_matrix /= dist_norm
+			if dist_in != None:
+				np.save(dist_in, dist_matrix)
 	else:
 		dist_matrix = np.load(dist_in, allow_pickle=True)
 	#
-	d_arr = squareform(dist_matrix)
-	Zread = linkage(d_arr, method='ward')
-	#
-	if fig_name != None:
-		mpl.rcParams.update({'font.size': 16, 'font.weight':'bold'})
+	if job[1] == 1 or job[0] == 0:
+		d_arr = squareform(dist_matrix)
+		Zread = linkage(d_arr, method='ward')
 		#
-		fig = mpl.figure(3, figsize=(8,24))
-		dendro_dat = dendrogram(Zread, orientation='left', labels=samp_labels)
-		#mpl.axvline(x=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
-		mpl.xlabel('distance')
+		if fig_name != None:
+			mpl.rcParams.update({'font.size': 16, 'font.weight':'bold'})
+			#
+			fig = mpl.figure(3, figsize=(8,24))
+			dendro_dat = dendrogram(Zread, orientation='left', labels=samp_labels)
+			#mpl.axvline(x=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
+			mpl.xlabel('distance')
+			#
+			mpl.tight_layout()
+			mpl.savefig(fig_name)
+			mpl.close(fig)
 		#
-		mpl.tight_layout()
-		mpl.savefig(fig_name)
-		mpl.close(fig)
+		labels_fromtop = dendro_dat['ivl'][::-1]
+		#
+		return (labels_fromtop)
 	#
-	labels_fromtop = dendro_dat['ivl'][::-1]
-	#
-	return (labels_fromtop)
+	return None
