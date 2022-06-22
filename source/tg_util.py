@@ -41,7 +41,7 @@ def exists_and_is_nonzero(fn):
 
 def makedir(d):
 	if not os.path.isdir(d):
-		os.system('mkdir '+d)
+		os.system('mkdir -p '+d)
 
 def rm(fn):
 	if exists_and_is_nonzero(fn):

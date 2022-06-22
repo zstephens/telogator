@@ -339,7 +339,9 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	               'p_ymax':20000,
 	               'q_ymax':20000,
 	               'y_step':5000,
-	               'fig_size':(16,6)}
+	               'fig_size':(16,6),
+	               'norm_by_readcount':True,
+	               'skip_plot':[]}
 	for k in custom_plot_params.keys():
 		plot_params[k] = custom_plot_params[k]
 	#
@@ -353,7 +355,7 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 		if n == 0:
 			ylab.append('')
 		else:
-			ylab.append(str(abs(n)//1000) + 'k')
+			ylab.append(str(abs(n)//1000) + 'kb')
 	#
 	ref_2_x = {'chr'+xlab[i]:xtck[i] for i in range(len(xlab))}
 	ref_2_x['unanchored'] = xtck[0]
@@ -363,7 +365,7 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 		readcount_denom = max([len(tel_len_dict[k]) for k in tel_len_dict.keys() if k != 'unanchored'])
 	else:
 		readcount_denom = 1
-	width_max = 1.0
+	width_max = 0.9
 	width_min = 0.1
 	#
 	# read in lengths and create data structures needed for violin plot
@@ -372,9 +374,12 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	(dat_p_p, dat_p_q) = ([], [])
 	(dat_w_p, dat_w_q) = ([], [])
 	for k in tel_len_dict.keys():
-		if len(tel_len_dict[k]) == 0:
+		if len(tel_len_dict[k]) == 0 or k in plot_params['skip_plot']:
 			continue
-		my_width = min( [width_max, max([width_min, width_max*(float(len(tel_len_dict[k]))/readcount_denom)])] )
+		if plot_params['norm_by_readcount']:
+			my_width = min( [width_max, max([width_min, width_max*(float(len(tel_len_dict[k]))/readcount_denom)])] )
+		else:
+			my_width = width_max
 		if k[-1] == 'p' or k == 'unanchored':
 			dat_p_p.append(ref_2_x[k[:-1]])
 			dat_l_p.append([])

@@ -717,7 +717,7 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 		return_dict = manager.dict()
 		processes   = []
 		for i in range(alignment_processes):
-			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, 'q', return_dict))
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, 'q', return_dict, None, None, True))
 			processes.append(p)
 		for i in range(alignment_processes):
 			processes[i].start()
