@@ -9,7 +9,7 @@ from collections import Counter
 
 from Bio import pairwise2
 
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, set_link_color_palette
 from scipy.spatial.distance import pdist, squareform
 
 from source.tg_reader import TG_Reader
@@ -39,10 +39,10 @@ XMATCH_NORMAL = -4
 GAP_OPEN = -4
 GAP_EXT  = -4
 #
-MATCH_CANON  = 2
+MATCH_CANON  = 0
 XMATCH_CANON = -4
 #
-MATCH_UNKNOWN  = 0
+MATCH_UNKNOWN  = 2
 XMATCH_UNKNOWN = -4
 
 DEFAULT_TREECUT = 0.250
@@ -241,7 +241,7 @@ def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scori
 			aln = pairwise2.align.globalms(seq_i, seq_j, MATCH_NORMAL, XMATCH_NORMAL, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
 		else:
 			aln = pairwise2.align.globalds(seq_i, seq_j, scoring_matrix, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
-		aln_score   = int(aln[0].score)
+		aln_score = int(aln[0].score)
 		#
 		# iden score
 		#
@@ -276,7 +276,7 @@ def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scori
 		#
 		# output
 		#
-		print(i, j, aln_score, rand_score, iden_score, '{0:0.3f}'.format(my_dist))
+		print((i,j), aln_score, rand_score, iden_score, '{0:0.3f}'.format(my_dist))
 		if train_out != None:
 			f = open(train_out, 'a')
 			f.write(seq_i + '\t' + seq_j + '\t' + str(aln_score) + '\t' + str(iden_score) + '\t' + str(rand_score) + '\n')
@@ -576,10 +576,14 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	Zread      = linkage(dist_array, method='ward')
 	#
 	if fig_name != None:
-		fig = mpl.figure(3, figsize=(8,8))
-		dendrogram(Zread)
+		fig = mpl.figure(3, figsize=(8,6))
+		mpl.rcParams.update({'font.size': 16, 'font.weight':'bold', 'lines.linewidth':2.0})
+		dendrogram(Zread, color_threshold=tree_cut)
 		mpl.axhline(y=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
+		mpl.xlabel('read #')
+		mpl.ylabel('distance')
 		mpl.title(my_chr + ' : ' + str(my_pos))
+		mpl.tight_layout()
 		mpl.savefig(fig_name)
 		mpl.close(fig)
 	#
@@ -701,7 +705,7 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 #
 #
 #
-def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=None, tree_cut=0.20, alignment_processes=8, job=(1,1)):
+def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=None, aln_mode='ms', tree_cut=4.30, alignment_processes=8, job=(1,1), dendrogram_height=12):
 	n_seq = len(sequences)
 	if dist_in == None or exists_and_is_nonzero(dist_in) == False:
 		dist_matrix = np.zeros((n_seq,n_seq))
@@ -712,6 +716,29 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 			for j in range(i+1,n_seq):
 				all_indices[k%alignment_processes].append((i,j))
 				k += 1
+		#
+		#	scoring matrix
+		#
+		unknown_letter   = 'A'
+		canonical_letter = 'C'
+		#
+		letters = AMINO
+		scoring_matrix = {}
+		for i in range(len(letters)):
+			for j in range(len(letters)):
+				if i == j:
+					scoring_matrix[(letters[i],letters[j])] = MATCH_NORMAL
+				else:
+					scoring_matrix[(letters[i],letters[j])] = XMATCH_NORMAL
+					scoring_matrix[(letters[j],letters[i])] = XMATCH_NORMAL
+		for i in range(len(letters)):
+			scoring_matrix[(letters[i],canonical_letter)] = XMATCH_CANON
+			scoring_matrix[(canonical_letter,letters[i])] = XMATCH_CANON
+		for i in range(len(letters)):
+			scoring_matrix[(letters[i],unknown_letter)] = XMATCH_UNKNOWN
+			scoring_matrix[(unknown_letter,letters[i])] = XMATCH_UNKNOWN
+		scoring_matrix[(canonical_letter, canonical_letter)] = MATCH_CANON		# reduced award for matching canonical
+		scoring_matrix[(unknown_letter, unknown_letter)]     = MATCH_UNKNOWN	# no reward for matching unknown regions
 		#
 		#	even more parallelization! Any problem can be solved by throwing tons of CPU at it.
 		#
@@ -732,7 +759,10 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 		return_dict = manager.dict()
 		processes   = []
 		for i in range(alignment_processes):
-			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, 'q', return_dict, None, None, True))
+			if aln_mode == 'ms':
+				p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, 'q', return_dict, None, None, True))
+			elif aln_mode == 'ds':
+				p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], sequences, pw2_gap, 'q', return_dict, scoring_matrix, None, False))
 			processes.append(p)
 		for i in range(alignment_processes):
 			processes[i].start()
@@ -756,22 +786,31 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 	#
 	if job[1] == 1 or job[0] == 0:
 		d_arr = squareform(dist_matrix)
-		Zread = linkage(d_arr, method='ward')
+		Zread = linkage(d_arr, method='complete')
 		#
 		if fig_name != None:
 			mpl.rcParams.update({'font.size': 16, 'font.weight':'bold'})
 			#
-			fig = mpl.figure(3, figsize=(8,24))
+			fig = mpl.figure(3, figsize=(8,dendrogram_height))
 			dendro_dat = dendrogram(Zread, orientation='left', labels=samp_labels)
-			#mpl.axvline(x=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
+			mpl.axvline(x=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
 			mpl.xlabel('distance')
 			#
 			mpl.tight_layout()
-			mpl.savefig(fig_name)
+			mpl.savefig(fig_name, dpi=200)	# default figure dpi = 100
 			mpl.close(fig)
 		#
 		labels_fromtop = dendro_dat['ivl'][::-1]
 		#
-		return (labels_fromtop)
+		assignments = fcluster(Zread, tree_cut, 'distance').tolist()
+		by_class = {}
+		for i in range(len(assignments)):
+			if assignments[i] not in by_class:
+				by_class[assignments[i]] = []
+			by_class[assignments[i]].append(i)
+		out_clust = sorted([(len(by_class[k]), sorted(by_class[k])) for k in by_class.keys()], reverse=True)
+		out_clust = [n[1] for n in out_clust]
+		#
+		return out_clust
 	#
 	return None

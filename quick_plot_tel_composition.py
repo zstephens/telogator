@@ -32,8 +32,6 @@ def main(raw_args=None):
 	KMER_STRAND = args.s
 	KMER_LIST   = []
 	KMER_COLORS = []
-	rev_kmers   = []
-	rev_colors  = []
 	if KMER_FILE == '':
 		print('using default telomere kmers.')
 		sim_path = pathlib.Path(__file__).resolve().parent
@@ -44,8 +42,6 @@ def main(raw_args=None):
 				splt = line.strip().split('\t')
 				KMER_LIST.append(splt[1])
 				KMER_COLORS.append(splt[2])
-				rev_kmers.append(RC(splt[1]))
-				rev_colors.append(splt[2])
 		f.close()
 	else:
 		fn_suffix = KMER_FILE.split('/')[-1]
@@ -57,8 +53,6 @@ def main(raw_args=None):
 					splt = line.strip().split('\t')
 					KMER_LIST.append(splt[1])
 					KMER_COLORS.append(splt[2])
-					rev_kmers.append(RC(splt[1]))
-					rev_colors.append(splt[2])
 			f.close()
 		else:
 			print('Error: kmer list not found')

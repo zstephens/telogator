@@ -157,11 +157,24 @@ def plot_all_read_data(density_data, tl_vals, aln_dat, tel_window, f_title, fig_
 #
 #	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, tel-anchor-dist, read_orientation, read_name, read_mapq]
 #
-def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, clust_dat=None, draw_boundaries=None):
+def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, clust_dat=None, draw_boundaries=None, plot_params={}):
 	which_tel = my_chr[-1]
 	max_tlen  = max([n[1] for n in kmer_dat])
 	n_reads   = len(kmer_dat)
-	X_STEP    = 1000
+	#
+	stock_params = {'xstep':1000,
+	                'xlim':None,
+	                'custom_title':None,
+	                'custom_xlabel':None,
+	                'number_label_rows':True,
+	                'fig_width':15}
+	for k in plot_params.keys():
+		stock_params[k] = plot_params[k]
+	#
+	X_STEP = stock_params['xstep']
+	xlim   = stock_params['xlim']
+	#
+	mpl.rcParams.update({'font.size': 12, 'font.weight':'normal', 'lines.linewidth':1.0})
 	#
 	if clust_dat == None:
 		read_clusters      = [list(range(n_reads))]
@@ -201,7 +214,7 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 			xtt = [n for n in range(0,max_tlen,X_STEP)]
 			xtl = [n for n in range(0,max_tlen,X_STEP)]
 	#
-	fig = mpl.figure(1, figsize=(15,vert_fig_size))
+	fig = mpl.figure(1, figsize=(stock_params['fig_width'],vert_fig_size))
 	reads_plotted_thus_far = 0
 	for clust_i in range(len(read_clusters)):
 		for i in range(len(read_clusters[clust_i])):
@@ -216,7 +229,13 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 				if which_tel == 'p':
 					ax1.yaxis.set_label_position("right")
 					ax1.yaxis.tick_right()
-				mpl.title(my_chr + ' : ' + str(my_pos))
+				if stock_params['custom_title'] == None:
+					if my_pos != None and my_pos != '':
+						mpl.title(my_chr + ' : ' + str(my_pos))
+					else:
+						mpl.title(my_chr)
+				else:
+					mpl.title(stock_params['custom_title'])
 				current_ax = ax1
 			else:
 				ax2 = mpl.subplot(total_rows_to_plot, 1, plot_i+1, sharex=ax1)
@@ -263,7 +282,10 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 				current_ax.add_line(lines.Line2D([draw_x, draw_x], [-1.5,1.5], color='black', linewidth=3, clip_on=False))
 
 			#
-			mpl.yticks([0],['('+str(my_ind_all)+') '+my_rname])
+			if stock_params['number_label_rows']:
+				mpl.yticks([0],['('+str(my_ind_all)+') '+my_rname])
+			else:
+				mpl.yticks([0],[my_rname])
 			mpl.ylim([-1,1])
 			#
 			if xlim != None:
@@ -275,7 +297,10 @@ def plot_kmer_hits(kmer_dat, kmer_colors, my_chr, my_pos, fig_name, xlim=None, c
 			#
 			reads_plotted_thus_far += 1
 	#
-	mpl.xlabel('distance from subtelomere/telomere boundary (bp)')
+	if stock_params['custom_xlabel'] == None:
+		mpl.xlabel('distance from subtelomere/telomere boundary (bp)')
+	else:
+		mpl.xlabel(stock_params['custom_xlabel'])
 	mpl.tight_layout()
 	mpl.subplots_adjust(hspace=0.0)
 	#if my_chr == 'chr2p':

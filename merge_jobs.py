@@ -26,28 +26,28 @@ INCLUDE_SUBTEL_BUFF = 500	# how much into the subtel alignment should we conside
 #
 #
 def main(raw_args=None):
-	parser = argparse.ArgumentParser(description='merge_jobs.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
+	parser = argparse.ArgumentParser(description='merge_jobs.py')
 	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/',      help="* Path to telogator results directory")
 	parser.add_argument('-r',  type=str, required=False, default='hifi', metavar='[hifi]',         help="Type of reads (hifi, clr, ont)")
 	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',          help="Method for computing chr TL (mean/median/max/p90)")
 	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
-	parser.add_argument('-cp', type=int, required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%)")
+	parser.add_argument('-cp', type=int, required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%%)")
 	parser.add_argument('-rc', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
 	parser.add_argument('-ra', type=int, required=False, default=3,      metavar='[3]',            help="Minimum number of reads per phased allele")
 	parser.add_argument('-ta', type=str, required=False, default='max',  metavar='[max]',          help="Method for computing allele TL (mean/median/max/p90)")
 	parser.add_argument('-tc', type=str, required=False, default='',     metavar='treecuts.tsv',   help="Custom treecut vals during allele clustering")
 	#
-	parser.add_argument('-th', type=int, required=False, default=0,        metavar='[0]',            help="TelomereHunter tel_content (for comparison)")
-	parser.add_argument('-gt', type=str, required=False, default='',       metavar='tlens.tsv',      help="Ground truth tel lens (for comparison)")
+	parser.add_argument('-th', type=int, required=False, default=0,        metavar='[0]',            help="TelomereHunter tel_content (for benchmarking)")
+	parser.add_argument('-gt', type=str, required=False, default='',       metavar='tlens.tsv',      help="Ground truth tel lens (for benchmarking)")
 	parser.add_argument('-rl', type=int, required=False, default=50000,    metavar='[50000]',        help="Maximum y-axis value for readlength violin plots")
 	parser.add_argument('-k',  type=str, required=False, default='',       metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
-	parser.add_argument('-m',  type=str, required=False, default='muscle', metavar='muscle',         help="/path/to/muscle executable")
+	parser.add_argument('-m',  type=str, required=False, default='muscle', metavar='muscle',         help="/path/to/muscle executable (needed for tel plotting)")
 	#
 	parser.add_argument('--pbsim',                 required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
-	parser.add_argument('--tel-composition-plots', required=False, default=False,  action='store_true', help='Produce telomere sequence composition plots')
+	parser.add_argument('--tel-color-plots',       required=False, default=False,  action='store_true', help='Produce telomere sequence composition plots')
 	parser.add_argument('--plot-denoised-tel',     required=False, default=False,  action='store_true', help='Use denoised reads for sequence composition plotting')
-	parser.add_argument('--extra-tlen-plots',      required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
-	parser.add_argument('--extra-readlen-plots',   required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
+	parser.add_argument('--more-tlen-plots',      required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
+	parser.add_argument('--more-readlen-plots',   required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
 	parser.add_argument('--telogator-pickle',      required=False, default=False,  action='store_true', help='Produce pickle which can be reprocessed by telogator.py')
 	args = parser.parse_args()
 
@@ -104,10 +104,10 @@ def main(raw_args=None):
 	READS_ARE_PBSIM     = args.pbsim
 	TEL_HUNTER_AVG      = args.th
 	GROUND_TRUTH_TLENS  = args.gt
-	TEL_SEQ_PLOTS       = args.tel_composition_plots
+	TEL_SEQ_PLOTS       = args.tel_color_plots
 	PLOT_DENOISED_CVECS = args.plot_denoised_tel
-	EXTRA_TLEN_PLOTS    = args.extra_tlen_plots
-	EXTRA_READLEN_PLOTS = args.extra_readlen_plots
+	EXTRA_TLEN_PLOTS    = args.more_tlen_plots
+	EXTRA_READLEN_PLOTS = args.more_readlen_plots
 	EXTRA_READLEN_YMAX  = args.rl
 	TELOGATOR_PICKLE    = args.telogator_pickle
 	TREECUT_TSV         = args.tc
@@ -124,8 +124,6 @@ def main(raw_args=None):
 	KMER_FILE   = args.k
 	KMER_LIST   = []
 	KMER_COLORS = []
-	rev_kmers   = []
-	rev_colors  = []
 	if KMER_FILE == '':
 		print('using default telomere kmers.')
 		sim_path = pathlib.Path(__file__).resolve().parent
@@ -136,8 +134,6 @@ def main(raw_args=None):
 				splt = line.strip().split('\t')
 				KMER_LIST.append(splt[1])
 				KMER_COLORS.append(splt[2])
-				rev_kmers.append(RC(splt[1]))
-				rev_colors.append(splt[2])
 		f.close()
 	else:
 		fn_suffix = KMER_FILE.split('/')[-1]
@@ -149,8 +145,6 @@ def main(raw_args=None):
 					splt = line.strip().split('\t')
 					KMER_LIST.append(splt[1])
 					KMER_COLORS.append(splt[2])
-					rev_kmers.append(RC(splt[1]))
-					rev_colors.append(splt[2])
 			f.close()
 		else:
 			print('Error: kmer list not found')
@@ -579,7 +573,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr3p':
+				if True or plotname_chr == 'chr2q':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
@@ -676,9 +670,11 @@ def main(raw_args=None):
 					#
 					# plotting!
 					#
-					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompplot_fn, xlim=[-1000,15000], clust_dat=read_clust_dat)
+					custom_plot_params = {'xlim':[-1000,15000]}
+					#custom_plot_params = {'xlim':[0,13000], 'custom_title':'', 'fig_width':12} # params for plotting figs for paper
+					plot_kmer_hits(kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompplot_fn, clust_dat=read_clust_dat, plot_params=custom_plot_params)
 					if len(consensus_clust_dat[0]):
-						plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, xlim=[-1000,15000], clust_dat=consensus_clust_dat, draw_boundaries=consensus_tvr_tel_pos)
+						plot_kmer_hits(consensus_kmer_hit_dat, KMER_COLORS, my_chr, my_pos, telcompcons_fn, clust_dat=consensus_clust_dat, draw_boundaries=consensus_tvr_tel_pos, plot_params=custom_plot_params)
 		print()
 	#
 	# write chr-level output (old telogator)
