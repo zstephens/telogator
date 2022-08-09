@@ -18,7 +18,7 @@ def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='grab_subreads_from_t2t-and-subtel_aln.py', formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
 	parser.add_argument('--bam',      type=str, required=True,  metavar='input.bam',        help="* Input BAM")
 	parser.add_argument('--fa',       type=str, required=True,  metavar='input.fa',         help="* Input reads (.fa / .fa.gz / .fq / .fq.gz)")
-	parser.add_argument('--out',      type=str, required=True,  metavar='output.fa',        help="* Output reads (.fa or .fa.gz)")
+	parser.add_argument('--out',      type=str, required=True,  metavar='output.fa',        help="* Output reads (.fa / .fa.gz / .fq / .fq.gz)")
 	parser.add_argument('--bed',      type=str, required=True,  metavar='subtel.bed',       help="* Subtel regions")
 	parser.add_argument('--samtools', type=str, required=False, metavar='samtools',         help="/path/to/samtools", default='samtools')
 	parser.add_argument('--readtype', type=str, required=False, metavar='CCS / CLR / SRA',  help="Read name format",  default='SRA')
@@ -41,6 +41,16 @@ def main(raw_args=None):
 		exit(1)
 	if exists_and_is_nonzero(SUBTEL_BED) == False:
 		print('Error: subtel.bed not found.')
+		exit(1)
+
+	OUTPUT_IS_FASTQ = False
+	if OUT_READS[-3:].lower() == '.fq' or OUT_READS[-6:].lower() == '.fq.gz':
+		OUTPUT_IS_FASTQ = True
+	INPUT_IS_FASTQ = False
+	if IN_READS[-3:].lower() == '.fq' or IN_READS[-6:].lower() == '.fq.gz':
+		INPUT_IS_FASTQ = True
+	if INPUT_IS_FASTQ == False and OUTPUT_IS_FASTQ == True:
+		print('Error: input is fasta and output is fastq.')
 		exit(1)
 
 	bed_str = []
@@ -98,7 +108,10 @@ def main(raw_args=None):
 		            (READTYPE == 'SRA' and get_sra_readname(my_name) in rn_dict),
 		            (READTYPE == 'CCS' and get_ccs_readname(my_name) in rn_dict)]
 		if any(got_hits):
-			f_out.write('>' + my_name + '\n' + my_rdat + '\n')
+			if OUTPUT_IS_FASTQ:
+				f_out.write('@' + my_name + '\n' + my_rdat + '\n' + '+' + '\n' + my_qdat + '\n')
+			else:
+				f_out.write('>' + my_name + '\n' + my_rdat + '\n')
 	#
 	my_reader.close()
 	f_out.close()
