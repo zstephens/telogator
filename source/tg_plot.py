@@ -366,7 +366,10 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	               'y_step':5000,
 	               'fig_size':(16,6),
 	               'norm_by_readcount':True,
-	               'skip_plot':[]}
+	               'skip_plot':[],
+	               'include_unanchored':False,
+	               'boxplot':False,
+	               'boxfliers':False}
 	for k in custom_plot_params.keys():
 		plot_params[k] = custom_plot_params[k]
 	#
@@ -392,6 +395,7 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 		readcount_denom = 1
 	width_max = 0.9
 	width_min = 0.1
+	width_box = 0.6
 	#
 	# read in lengths and create data structures needed for violin plot
 	#
@@ -404,7 +408,10 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 		if plot_params['norm_by_readcount']:
 			my_width = min( [width_max, max([width_min, width_max*(float(len(tel_len_dict[k]))/readcount_denom)])] )
 		else:
-			my_width = width_max
+			if plot_params['boxplot']:
+				my_width = width_box
+			else:
+				my_width = width_max
 		if k[-1] == 'p' or k == 'unanchored':
 			dat_p_p.append(ref_2_x[k[:-1]])
 			dat_l_p.append([])
@@ -423,7 +430,15 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	#
 	fig = mpl.figure(1,figsize=plot_params['fig_size'])
 	#
-	violin_plotting(dat_p_p, dat_l_p, dat_w_p, dat_p_q, dat_l_q, dat_w_q, plot_params, plot_means)
+	if plot_params['boxplot']:
+		box_params   = {'linewidth':2, 'facecolor':(0.9, 0.9, 0.9)}
+		mean_params  = {'linewidth':2, 'linestyle':'solid', 'color':(0.5, 0.5, 0.5)}
+		line_params  = {'linewidth':2}
+		flier_params = {'marker':'.', 'markerfacecolor':(0.0, 0.0, 0.0), 'markersize':8, 'linestyle':'none', 'alpha':0.2}
+		mpl.boxplot(dat_l_p, vert=True, positions=dat_p_p, widths=dat_w_p, patch_artist=True, showfliers=plot_params['boxfliers'], boxprops=box_params, medianprops=mean_params, whiskerprops=line_params, capprops=line_params, flierprops=flier_params)
+		mpl.boxplot(dat_l_q, vert=True, positions=dat_p_q, widths=dat_w_q, patch_artist=True, showfliers=plot_params['boxfliers'], boxprops=box_params, medianprops=mean_params, whiskerprops=line_params, capprops=line_params, flierprops=flier_params)
+	else:
+		violin_plotting(dat_p_p, dat_l_p, dat_w_p, dat_p_q, dat_l_q, dat_w_q, plot_params, plot_means)
 	#
 	# plot ground-truth values (for simulated data)
 	#
@@ -439,8 +454,12 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 		mpl.plot([xval - 0.35, xval + 0.35], [yval, yval], '-k', linewidth=3, alpha=1.0)
 	#
 	mpl.plot([0,len(xlab)+1], [0,0], '-k', linewidth=3)
-	mpl.xticks(xtck, xlab, rotation=plot_params['xlabel_rot'])
-	mpl.xlim([0,len(xlab)+1])
+	if plot_params['include_unanchored']:
+		mpl.xticks(xtck, xlab, rotation=plot_params['xlabel_rot'])
+		mpl.xlim([0,len(xlab)+1])
+	else:
+		mpl.xticks(xtck[1:], xlab[1:], rotation=plot_params['xlabel_rot'])
+		mpl.xlim([1,len(xlab)+1])
 	mpl.yticks(ytck, ylab)
 	mpl.ylim([-q_ymax, p_ymax])
 	mpl.ylabel(plot_params['y_label'])
@@ -538,6 +557,122 @@ def tel_len_violin_single_chr_multiple_samples(tel_len_by_samp, out_fn, plot_mea
 	mpl.plot([0,len(xlab)+1], [0,0], '-k', linewidth=3)
 	mpl.xticks(xtck, xlab, rotation=plot_params['xlabel_rot'])
 	mpl.xlim([0,len(xlab)+1])
+	mpl.yticks(ytck, ylab)
+	mpl.ylim([-q_ymax, p_ymax])
+	mpl.ylabel(plot_params['y_label'])
+	mpl.grid(linestyle='--', alpha=0.5)
+	mpl.tight_layout()
+	mpl.savefig(out_fn)
+	mpl.close(fig)
+
+#
+#
+#
+def tel_len_bar_plot(tel_len_dict, out_fn, custom_plot_params={}):
+	#
+	# plotting constants
+	#
+	mpl.rcParams.update({'font.size': 18, 'font.weight':'bold'})
+	plot_params = {'p_color':'blue',
+	               'q_color':'red',
+	               'xlabel_rot':0,
+	               'y_label':'<-- q   telomere length   p -->',
+	               'p_ymax':20000,
+	               'q_ymax':20000,
+	               'y_step':5000,
+	               'fig_size':(16,6),
+	               'skip_plot':[],
+	               'include_unanchored':False,
+	               'ytick_suffix':'',
+	               'hatch_data':None}
+	for k in custom_plot_params.keys():
+		plot_params[k] = custom_plot_params[k]
+	#
+	xlab = ['-'] + [str(n) for n in range(1,22+1)] + ['X', 'Y']
+	xtck = list(range(1,len(xlab)+1))
+	ydel = plot_params['y_step']
+	(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
+	ytck = list(range(-q_ymax, p_ymax+ydel, ydel))
+	ylab = [str(abs(n))+plot_params['ytick_suffix'] for n in ytck]
+	#
+	ref_2_x = {'chr'+xlab[i]:xtck[i] for i in range(len(xlab))}
+	ref_2_x['unanchored'] = xtck[0]
+	ref_2_x['unanchore']  = xtck[0]
+	#
+	# read in lengths and create data structures needed for violin plot
+	#
+	(dat_l_p, dat_l_q) = ([], [])
+	(dat_p_p, dat_p_q) = ([], [])
+	for k in tel_len_dict.keys():
+		if k in plot_params['skip_plot']:
+			continue
+		if k[-1] == 'p' or k == 'unanchored':
+			dat_p_p.append(ref_2_x[k[:-1]])
+			dat_l_p.append(tel_len_dict[k])
+		elif k[-1] == 'q':
+			dat_p_q.append(ref_2_x[k[:-1]])
+			dat_l_q.append(tel_len_dict[k])
+	#
+	if plot_params['hatch_data'] != None:
+		(hat_l_p, hat_l_q) = ([], [])
+		(hat_p_p, hat_p_q) = ([], [])
+		for k in plot_params['hatch_data'].keys():
+			if k in plot_params['skip_plot']:
+				continue
+			if k[-1] == 'p' or k == 'unanchored':
+				hat_p_p.append(ref_2_x[k[:-1]])
+				hat_l_p.append(plot_params['hatch_data'][k])
+			elif k[-1] == 'q':
+				hat_p_q.append(ref_2_x[k[:-1]])
+				hat_l_q.append(plot_params['hatch_data'][k])
+	#
+	# violin plot
+	#
+	fig = mpl.figure(1,figsize=plot_params['fig_size'])
+	#
+	polygons = []
+	p_color  = []
+	p_alpha  = []
+	for i in range(len(dat_p_p)):
+		xp = [dat_p_p[i]-0.3, dat_p_p[i]+0.3]
+		yp = [0, dat_l_p[i]]
+		polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+		p_color.append((0.6, 0.6, 0.6))
+		p_alpha.append(1.0)
+	for i in range(len(dat_p_q)):
+		xp = [dat_p_q[i]-0.3, dat_p_q[i]+0.3]
+		yp = [0, -dat_l_q[i]]
+		polygons.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+		p_color.append((0.6, 0.6, 0.6))
+		p_alpha.append(1.0)
+	#
+	polygons2 = []
+	p_color2  = []
+	if plot_params['hatch_data'] != None:
+		for i in range(len(hat_p_p)):
+			xp = [hat_p_p[i]-0.3, hat_p_p[i]+0.3]
+			yp = [0, hat_l_p[i]]
+			polygons2.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+			p_color2.append((0.45, 0.45, 0.45))
+		for i in range(len(hat_p_p)):
+			xp = [hat_p_q[i]-0.3, hat_p_q[i]+0.3]
+			yp = [0, -hat_l_q[i]]
+			polygons2.append(Polygon(np.array([ [xp[0],yp[0]], [xp[0],yp[1]], [xp[1],yp[1]], [xp[1],yp[0]] ]), closed=True))
+			p_color2.append((0.45, 0.45, 0.45))
+	#
+	ax = mpl.gca()
+	for j in range(len(polygons)):
+		ax.add_collection(PatchCollection([polygons[j]], color=p_color[j], alpha=p_alpha[j], linewidth=0))
+	for j in range(len(polygons2)):
+		ax.add_collection(PatchCollection([polygons2[j]], facecolor=p_color2[j], hatch='//', linewidth=0))
+	#
+	mpl.plot([0,len(xlab)+1], [0,0], '-k', linewidth=3)
+	if plot_params['include_unanchored']:
+		mpl.xticks(xtck, xlab, rotation=plot_params['xlabel_rot'])
+		mpl.xlim([0,len(xlab)+1])
+	else:
+		mpl.xticks(xtck[1:], xlab[1:], rotation=plot_params['xlabel_rot'])
+		mpl.xlim([1,len(xlab)+1])
 	mpl.yticks(ytck, ylab)
 	mpl.ylim([-q_ymax, p_ymax])
 	mpl.ylabel(plot_params['y_label'])

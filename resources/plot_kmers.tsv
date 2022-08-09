@@ -1,32 +1,30 @@
-p	CCCTAA	blue
-p	CCTA	darkblue
-p	CCTAA	darkblue
-p	CCCTA	darkblue
-p	CCCCTA	darkblue
-#p	CCCCTAA	darkblue
-#p	CCCTAAA	darkblue
-#p	CCCCCTAA	darkblue
-p	CCCTTA	turquoise
-p	CCCTTAA	turquoise
+p	CCCTAA	blue	C	canonical
+p	CCTA	darkblue	N	denoise
+p	CCTAA	darkblue	N	denoise
+p	CCCTA	darkblue	N	denoise
+p	CCCCTA	darkblue	N	denoise
 #
-p	CCCCCA	limegreen
-p	CCCCAA	green
-p	CCCAA	darkgreen
-p	CCCA	darkgreen
-p	CCAA	darkgreen
+p	CCCCCA	lightgreen	L	denoise
+p	CCCAA	darkgreen	P	denoise
+p	CCCA	darkgreen	P	denoise
+p	CCAA	darkgreen	P	denoise
+p	CCCCAA	green	F	denoise,tvr
 #
-p	CCCTAG	orange
-p	CCTAG	darkorange
+p	CCCTTA	cyan	K	tvr
+p	CCCTTAA	darkcyan	S	tvr
 #
-p	CCCTCA	yellow
+p	CCCTAG	orange	G	tvr
+p	CCTAG	darkorange	Q	tvr
 #
-p	CCCTCG	tan
+p	CCCTCA	yellow	E	tvr
 #
-p	CCCTGA	red
+p	CCCTCG	tan	I	tvr
 #
-p	CCCGAA	violet
-p	CCCGA	darkviolet
+p	CCCTGA	red	D	tvr
 #
-p	CCCTCTAA	khaki
+p	CCCGAA	violet	H	tvr
+p	CCCGA	darkviolet	R	tvr
 #
-p	CCCCCC	gray
+p	CCCTCTAA	gold	M	tvr
+#
+p	CCCCCC	gray	T	denoise

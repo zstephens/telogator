@@ -9,7 +9,7 @@ from collections import Counter
 
 from Bio import pairwise2
 
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, set_link_color_palette
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.spatial.distance import pdist, squareform
 
 from source.tg_reader import TG_Reader
@@ -18,6 +18,7 @@ from source.tg_util import exists_and_is_nonzero
 # we're going to pretend each kmer color is an amino acid, so alignment tools behave themselves
 AMINO = ['A','C','D','E','F','G','H','I','K','L','M','N','P','Q','R','S','T','V','W','Y']
 AMINO_2_IND = {AMINO[i]:i for i in range(len(AMINO))}
+UNKNOWN_LETTER = AMINO[0]
 
 # how many blocks of gaps to consider for plotting adj
 MAX_GAP_BLOCK = 3
@@ -159,6 +160,9 @@ def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={
 	#
 	return [out_seq, consensus_seq]
 
+#
+#
+#
 def get_adj_from_gaps(s):
 	in_gap     = False
 	gap_count  = 0
@@ -222,6 +226,9 @@ def estimate_rand_score(seq1, seq2, aln_score, iden_score):
 		rand_score += RAND_REG_WEIGHTS[i]*feature_vector[i]
 	return int(rand_score)
 
+#
+#
+#
 def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scoring_matrix=None, train_out=None, estimate_rand=False):
 	for (i,j) in our_indices:
 		#
@@ -283,6 +290,9 @@ def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scori
 			f.close()
 		out_dict[(i,j)] = my_dist
 
+#
+#
+#
 def find_density_boundary(sequence, which_letter, win_size, dens_thresh, thresh_dir='below'):
 	my_unknown = np.zeros(len(sequence))
 	for j in range(len(sequence)):
@@ -325,6 +335,9 @@ def find_density_boundary(sequence, which_letter, win_size, dens_thresh, thresh_
 	#
 	return (sequence[:first_pos_below_thresh], sequence[first_pos_below_thresh:])
 
+#
+#
+#
 def find_cumulative_boundary(sequence, which_letters, cum_thresh=0.05, min_hits=100):
 	hits = [1*(n in which_letters) for n in sequence]
 	hits_cum = np.cumsum(hits)
@@ -345,39 +358,43 @@ def find_cumulative_boundary(sequence, which_letters, cum_thresh=0.05, min_hits=
 	#
 	return first_pos_below_thresh
 
-def convert_colorvec_to_kmerhits(colorvecs, kmer_list, kmer_colors):
-	scolors  = sorted(list(set(kmer_colors)))
-	n_colors = len(scolors)
-	col_2_sc = {n:scolors.index(n) for n in scolors}
+#
+#
+#
+def convert_colorvec_to_kmerhits(colorvecs, repeats_metadata):
 	#
-	unknown_letter   = AMINO[0]
+	[kmer_list, kmer_colors, kmer_letters, kmer_flags] = repeats_metadata
+	#
 	amino_2_kmer_ind = {}
-	for i in range(n_colors):
-		amino_2_kmer_ind[AMINO[i+1]] = kmer_colors.index(scolors[i])
+	for i in range(len(kmer_colors)):
+		amino_2_kmer_ind[kmer_letters[i]] = i
 	#
 	out_kmerhits = []
 	for i in range(len(colorvecs)):
 		current_block = colorvecs[i][0]
 		current_start = 0
 		out_kmerhits.append([[] for n in range(len(kmer_colors))])
-		colorvecs[i] += unknown_letter
+		colorvecs[i] += UNKNOWN_LETTER
 		for j in range(1,len(colorvecs[i])):
 			if colorvecs[i][j] != current_block:
-				if current_block != unknown_letter:
+				if current_block != UNKNOWN_LETTER:
 					my_ind = amino_2_kmer_ind[current_block]
 					out_kmerhits[-1][my_ind].append((current_start, j))
 				current_block = colorvecs[i][j]
 				current_start = j
 	return out_kmerhits
 
-def denoise_colorvec(v, min_size=10, max_gap_fill=50, chars_to_delete=[], char_to_merge='C'):
+#
+#
+#
+def denoise_colorvec(v, min_size=10, max_gap_fill=50, chars_to_delete=[], char_to_merge=''):
 	blocks = []
 	current_block = v[0]
 	current_start = 0
-	v += AMINO[0]
+	v += UNKNOWN_LETTER
 	for i in range(1,len(v)):
 		if v[i] != current_block:
-			if current_block != AMINO[0]:
+			if current_block != UNKNOWN_LETTER:
 				blocks.append((current_start, i, current_block))
 			current_block = v[i]
 			current_start = i
@@ -397,7 +414,7 @@ def denoise_colorvec(v, min_size=10, max_gap_fill=50, chars_to_delete=[], char_t
 				blocks[i-1] = (blocks[i-1][0], blocks[i][1], blocks[i][2])
 				del blocks[i]
 	#
-	v_out = [AMINO[0] for n in v]
+	v_out = [UNKNOWN_LETTER for n in v]
 	for block in blocks:
 		for i in range(block[0],block[1]):
 			v_out[i] = block[2]
@@ -406,66 +423,51 @@ def denoise_colorvec(v, min_size=10, max_gap_fill=50, chars_to_delete=[], char_t
 #
 #	kmer_dat[i] = [[kmer1_hits, kmer2_hits, ...], tlen, tel-anchor-dist, read-orientation, readname, anchor_mapq]
 #
-def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist_in=None, fig_name=None, msa_dir='', save_msa=None, train_prefix=None, tvr_truncate=3000, tree_cut=None, alignment_processes=8, muscle_exe='muscle'):
-	n_reads  = len(kmer_dat)
-	scolors  = sorted(list(set(kmer_colors)))
-	n_colors = len(scolors)
-	col_2_sc = {n:scolors.index(n) for n in scolors}
+#	repeats_metadata = [kmer_list, kmer_colors, kmer_letters, kmer_flags]
+#
+def cluster_tel_sequences(kmer_dat, repeats_metadata, my_chr, my_pos, dist_in=None, fig_name=None, msa_dir='', save_msa=None, train_prefix=None, tvr_truncate=3000, tree_cut=None, alignment_processes=8, muscle_exe='muscle'):
+	#
+	[kmer_list, kmer_colors, kmer_letters, kmer_flags] = repeats_metadata
+	#
+	n_reads = len(kmer_dat)
+	pq      = my_chr[-1]
 	#
 	if tree_cut == None:
 		tree_cut = DEFAULT_TREECUT
 	#
-	pq = my_chr[-1]
-	if pq == 'p':
-		pw2_gap = (False, True)
-	elif pq == 'q':
-		pw2_gap = (True, False)
-	#
-	unknown_letter   = AMINO[0]
 	canonical_letter = None
-	cname_to_amino   = {}
+	denoise_chars    = []
+	tvr_letters      = []
 	for i in range(len(kmer_list)):
-		if kmer_list[i] in ['CCCTAA', 'TTAGGG']:
-			canonical_letter = AMINO[col_2_sc[kmer_colors[i]]+1]
-		cname_to_amino[kmer_colors[i]] = AMINO[col_2_sc[kmer_colors[i]]+1]
-	#print_cname = sorted([(cname_to_amino[n],n) for n in cname_to_amino.keys()])
-	#for n in print_cname:
-	#	print(n[0], n[1])
-	#exit(1)
+		if 'canonical' in kmer_flags[i]:
+			canonical_letter = kmer_letters[i]
+		if 'denoise' in kmer_flags[i]:
+			denoise_chars.append(kmer_letters[i])
+		if 'tvr' in kmer_flags[i]:
+			tvr_letters.append(kmer_letters[i])
+		if kmer_letters[i] == UNKNOWN_LETTER:
+			print('Error: character A is reserved for unknown sequence')
+			exit(1)
 	if canonical_letter == None:
 		print('Error: cluster_tel_sequences() received a kmer list that does not have CCCTAA or TTAGGG')
 		exit(1)
+	#
 	# when generating consensus sequence for cluster: in ties, prioritize canonical, deprioritize unknown
-	char_score_adj = {canonical_letter:1, unknown_letter:-1}
+	#
+	char_score_adj = {canonical_letter:1, UNKNOWN_LETTER:-1}
 	#
 	# create color vector
 	#
-	my_col_single = []
+	all_colorvecs = []
 	for i in range(n_reads):
 		[my_kmer_hits, my_tlen, my_dbta, my_orr, my_rname, my_mapq] = kmer_dat[i]
-		my_col_single.append(np.zeros(my_tlen, dtype='>i4'))
+		my_letters = [UNKNOWN_LETTER for n in range(my_tlen)]
 		for ki in range(len(my_kmer_hits)):
 			if len(my_kmer_hits[ki]):
 				for kmer_span in my_kmer_hits[ki]:
-					xp = [kmer_span[0], kmer_span[1]]
-					my_col_single[-1][xp[0]:xp[1]] = col_2_sc[kmer_colors[ki]]+1
-		my_col_single[-1] = ''.join([AMINO[n] for n in my_col_single[-1]])
-	#
-	# pacbio-specific denoising parameters
-	#
-	denoise_cols  = ['gray', 'darlblue', 'green', 'darkgreen']
-	denoise_chars = []
-	for c in denoise_cols:
-		if c in cname_to_amino:
-			denoise_chars.append(cname_to_amino[c])
-	#
-	# which letters should count towards tvr when identifying tvr/tel boundary?
-	#
-	tvr_cols = ['green', 'yellow', 'tan', 'khaki', 'red', 'orange', 'darkorange', 'violet', 'darkviolet', 'turquoise']
-	tvr_letters = []
-	for c in tvr_cols:
-		if c in cname_to_amino:
-			tvr_letters.append(cname_to_amino[c])
+					for j in range(kmer_span[0], kmer_span[1]):
+						my_letters[j] = kmer_letters[ki]
+		all_colorvecs.append(''.join(my_letters))
 	#
 	# identify subtel / tvr boundary
 	#
@@ -474,13 +476,13 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	cleaned_colorvecs = []
 	colorvecs_for_msa = []
 	err_end_lens      = []
-	for i in range(len(my_col_single)):
+	for i in range(len(all_colorvecs)):
 		#
 		if pq == 'p':
 			# identify subtel/tvr boundary based on density of unknown characters
-			(seq_left, seq_right) = find_density_boundary(my_col_single[i][::-1], unknown_letter, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
+			(seq_left, seq_right) = find_density_boundary(all_colorvecs[i][::-1], UNKNOWN_LETTER, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
 			# denoise tvr+tel section
-			seq_right_denoise = denoise_colorvec(seq_right, chars_to_delete=denoise_chars)
+			seq_right_denoise = denoise_colorvec(seq_right, chars_to_delete=denoise_chars, char_to_merge=canonical_letter)
 			# remove ends of reads that might be sequencing artifacts, based on density of canonical characters
 			(err_left, err_right) = find_density_boundary(seq_right_denoise[::-1], canonical_letter, CANON_WIN_SIZE, CANON_END_DENS, thresh_dir='above')
 			#
@@ -497,9 +499,9 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 		#
 		elif pq == 'q':
 			# identify subtel/tvr boundary based on density of unknown characters
-			(seq_left, seq_right) = find_density_boundary(my_col_single[i], unknown_letter, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
+			(seq_left, seq_right) = find_density_boundary(all_colorvecs[i], UNKNOWN_LETTER, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
 			# denoise tvr+tel section
-			seq_right_denoise = denoise_colorvec(seq_right, chars_to_delete=denoise_chars)
+			seq_right_denoise = denoise_colorvec(seq_right, chars_to_delete=denoise_chars, char_to_merge=canonical_letter)
 			# remove ends of reads that might be sequencing artifacts, based on density of canonical characters
 			(err_left, err_right) = find_density_boundary(seq_right_denoise[::-1], canonical_letter, CANON_WIN_SIZE, CANON_END_DENS, thresh_dir='above')
 			#
@@ -640,10 +642,10 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 	#
 	for i in range(len(out_consensus)):
 		if pq == 'p':
-			(cons_left, cons_right) = find_density_boundary(out_consensus[i][::-1], unknown_letter, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
+			(cons_left, cons_right) = find_density_boundary(out_consensus[i][::-1], UNKNOWN_LETTER, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
 			out_consensus[i] = cons_right[::-1]
 		elif pq == 'q':
-			(cons_left, cons_right) = find_density_boundary(out_consensus[i], unknown_letter, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
+			(cons_left, cons_right) = find_density_boundary(out_consensus[i], UNKNOWN_LETTER, UNKNOWN_WIN_SIZE, UNKNOWN_END_DENS, thresh_dir='below')
 			out_consensus[i] = cons_right
 	#
 	# identify tvr/tel boundary from consensus sequences
@@ -657,7 +659,7 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 				current_cons = out_consensus[i][:MAX_TVR_LEN] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN)
 		else:
 			current_cons = out_consensus[i]
-		denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_STRICT[0])
+		denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_STRICT[0], char_to_merge=canonical_letter)
 		if pq == 'q':
 			denoised_consensus = denoised_consensus[::-1]
 		tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters, cum_thresh=TVR_CANON_FILT_PARAMS_STRICT[1], min_hits=TVR_CANON_FILT_PARAMS_STRICT[2])
@@ -672,7 +674,7 @@ def cluster_tel_sequences(kmer_dat, kmer_list, kmer_colors, my_chr, my_pos, dist
 					current_cons = out_consensus[i][:MAX_TVR_LEN_SHORT] + canonical_letter*(len(out_consensus[i])-MAX_TVR_LEN_SHORT)
 			else:
 				current_cons = out_consensus[i]
-			denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_LENIENT[0])
+			denoised_consensus = denoise_colorvec(current_cons, chars_to_delete=tvr_letters, min_size=TVR_CANON_FILT_PARAMS_LENIENT[0], char_to_merge=canonical_letter)
 			if pq == 'q':
 				denoised_consensus = denoised_consensus[::-1]
 			tel_boundary = find_cumulative_boundary(denoised_consensus, tvr_letters, cum_thresh=TVR_CANON_FILT_PARAMS_LENIENT[1], min_hits=TVR_CANON_FILT_PARAMS_LENIENT[2])
@@ -719,7 +721,7 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 		#
 		#	scoring matrix
 		#
-		unknown_letter   = 'A'
+		UNKNOWN_LETTER   = 'A'
 		canonical_letter = 'C'
 		#
 		letters = AMINO
@@ -735,10 +737,10 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 			scoring_matrix[(letters[i],canonical_letter)] = XMATCH_CANON
 			scoring_matrix[(canonical_letter,letters[i])] = XMATCH_CANON
 		for i in range(len(letters)):
-			scoring_matrix[(letters[i],unknown_letter)] = XMATCH_UNKNOWN
-			scoring_matrix[(unknown_letter,letters[i])] = XMATCH_UNKNOWN
+			scoring_matrix[(letters[i],UNKNOWN_LETTER)] = XMATCH_UNKNOWN
+			scoring_matrix[(UNKNOWN_LETTER,letters[i])] = XMATCH_UNKNOWN
 		scoring_matrix[(canonical_letter, canonical_letter)] = MATCH_CANON		# reduced award for matching canonical
-		scoring_matrix[(unknown_letter, unknown_letter)]     = MATCH_UNKNOWN	# no reward for matching unknown regions
+		scoring_matrix[(UNKNOWN_LETTER, UNKNOWN_LETTER)]     = MATCH_UNKNOWN	# no reward for matching unknown regions
 		#
 		#	even more parallelization! Any problem can be solved by throwing tons of CPU at it.
 		#
@@ -792,7 +794,7 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 			mpl.rcParams.update({'font.size': 16, 'font.weight':'bold'})
 			#
 			fig = mpl.figure(3, figsize=(8,dendrogram_height))
-			dendro_dat = dendrogram(Zread, orientation='left', labels=samp_labels)
+			dendro_dat = dendrogram(Zread, orientation='left', labels=samp_labels, color_threshold=tree_cut)
 			mpl.axvline(x=[tree_cut], linestyle='dashed', color='black', alpha=0.7)
 			mpl.xlabel('distance')
 			#

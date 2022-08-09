@@ -124,34 +124,37 @@ def main(raw_args=None):
 	KMER_FILE   = args.k
 	KMER_LIST   = []
 	KMER_COLORS = []
-	if KMER_FILE == '':
+	KMER_LETTER = []
+	KMER_FLAGS  = []
+	#
+	if KMER_FILE != '':
+		fn_suffix = KMER_FILE.split('/')[-1]
+		print('using user-specified kmer list:', fn_suffix)
+		if exists_and_is_nonzero(KMER_FILE) == False:
+			print('Error: kmer list not found')
+			exit(1)
+		kmer_fn = KMER_FILE
+	else:
 		print('using default telomere kmers.')
 		sim_path = pathlib.Path(__file__).resolve().parent
 		kmer_fn  = str(sim_path) + '/resources/plot_kmers.tsv'
-		f = open(kmer_fn,'r')
-		for line in f:
-			if line[0] != '#':
-				splt = line.strip().split('\t')
-				KMER_LIST.append(splt[1])
-				KMER_COLORS.append(splt[2])
-		f.close()
-	else:
-		fn_suffix = KMER_FILE.split('/')[-1]
-		print('using user-specified kmer list:', fn_suffix)
-		if exists_and_is_nonzero(KMER_FILE):
-			f = open(KMER_FILE,'r')
-			for line in f:
-				if line[0] != '#':
-					splt = line.strip().split('\t')
-					KMER_LIST.append(splt[1])
-					KMER_COLORS.append(splt[2])
-			f.close()
-		else:
-			print('Error: kmer list not found')
-			exit(1)
-	sorted_kmer_dat  = sorted(list(set([(len(KMER_LIST[n]),KMER_LIST[n],KMER_COLORS[n]) for n in range(len(KMER_LIST))])), reverse=True)	# sort by length
+	#
+	f = open(kmer_fn,'r')
+	for line in f:
+		if line[0] != '#':
+			splt = line.strip().split('\t')
+			KMER_LIST.append(splt[1])
+			KMER_COLORS.append(splt[2])
+			KMER_LETTER.append(splt[3])
+			KMER_FLAGS.append(splt[4])
+	f.close()
+	#
+	sorted_kmer_dat  = sorted(list(set([(len(KMER_LIST[n]), KMER_LIST[n], KMER_COLORS[n], KMER_LETTER[n], KMER_FLAGS[n]) for n in range(len(KMER_LIST))])), reverse=True)	# sort by length
 	KMER_LIST        = [n[1] for n in sorted_kmer_dat]
 	KMER_COLORS      = [n[2] for n in sorted_kmer_dat]
+	KMER_LETTER      = [n[3] for n in sorted_kmer_dat]
+	KMER_FLAGS       = [n[4].split(',') for n in sorted_kmer_dat]
+	KMER_METADATA    = [KMER_LIST, KMER_COLORS, KMER_LETTER, KMER_FLAGS]
 	KMER_ISSUBSTRING = []
 	for i in range(len(KMER_LIST)):
 		KMER_ISSUBSTRING.append([j for j in range(len(KMER_LIST)) if (j != i and KMER_LIST[i] in KMER_LIST[j])])
@@ -588,7 +591,7 @@ def main(raw_args=None):
 					elif (my_chr,my_pos) in custom_treecut_vals:
 						my_tc = custom_treecut_vals[(my_chr,my_pos)]
 					#
-					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_LIST, KMER_COLORS, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref, save_msa=consensus_fn, muscle_exe=MUSCLE_EXE)
+					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_METADATA, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref, save_msa=consensus_fn, muscle_exe=MUSCLE_EXE)
 					#
 					for allele_i in range(len(read_clust_dat[0])):
 						#
@@ -643,8 +646,8 @@ def main(raw_args=None):
 					my_color_vectors  = read_clust_dat[5]
 					my_end_err_lens   = read_clust_dat[6]
 					my_tvr_tel_bounds = read_clust_dat[7]
-					redrawn_kmerhits  = convert_colorvec_to_kmerhits(my_color_vectors, KMER_LIST, KMER_COLORS)
-					redrawn_consensus = convert_colorvec_to_kmerhits(my_consensus_vecs, KMER_LIST, KMER_COLORS)
+					redrawn_kmerhits  = convert_colorvec_to_kmerhits(my_color_vectors,  KMER_METADATA)
+					redrawn_consensus = convert_colorvec_to_kmerhits(my_consensus_vecs, KMER_METADATA)
 					if PLOT_DENOISED_CVECS:
 						for rdki in range(len(redrawn_kmerhits)):
 							kmer_hit_dat[rdki][0]  = redrawn_kmerhits[rdki]	# replace kmer hit tuples for plotting
