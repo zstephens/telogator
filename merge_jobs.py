@@ -9,7 +9,7 @@ import sys
 
 import numpy as np
 
-from source.tg_cluster import cluster_tel_sequences, convert_colorvec_to_kmerhits
+from source.tg_cluster import cluster_tel_sequences, convert_colorvec_to_kmerhits, get_muscle_msa
 from source.tg_kmer    import get_nonoverlapping_kmer_hits, get_telomere_kmer_frac
 from source.tg_plot    import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
 from source.tg_util    import RC, cluster_list, LEXICO_2_IND, exists_and_is_nonzero, makedir
@@ -43,12 +43,13 @@ def main(raw_args=None):
 	parser.add_argument('-k',  type=str, required=False, default='',       metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
 	parser.add_argument('-m',  type=str, required=False, default='muscle', metavar='muscle',         help="/path/to/muscle executable (needed for tel plotting)")
 	#
-	parser.add_argument('--pbsim',                 required=False, default=False,  action='store_true', help='Simulated data from pbsim, print out confusion matrix')
-	parser.add_argument('--tel-color-plots',       required=False, default=False,  action='store_true', help='Produce telomere sequence composition plots')
-	parser.add_argument('--plot-denoised-tel',     required=False, default=False,  action='store_true', help='Use denoised reads for sequence composition plotting')
-	parser.add_argument('--more-tlen-plots',      required=False, default=False,  action='store_true', help='Produce extra violin plots (TL)')
-	parser.add_argument('--more-readlen-plots',   required=False, default=False,  action='store_true', help='Produce extra violin plots (readlens)')
-	parser.add_argument('--telogator-pickle',      required=False, default=False,  action='store_true', help='Produce pickle which can be reprocessed by telogator.py')
+	parser.add_argument('--pbsim',              required=False, default=False, action='store_true', help='Simulated data from pbsim, print out confusion matrix')
+	parser.add_argument('--tel-color-plots',    required=False, default=False, action='store_true', help='Produce telomere sequence composition plots')
+	parser.add_argument('--plot-denoised-tel',  required=False, default=False, action='store_true', help='Use denoised reads for sequence composition plotting')
+	parser.add_argument('--more-tlen-plots',    required=False, default=False, action='store_true', help='Produce extra violin plots (TL)')
+	parser.add_argument('--more-readlen-plots', required=False, default=False, action='store_true', help='Produce extra violin plots (readlens)')
+	parser.add_argument('--nucl-consensus',     required=False, default=False, action='store_true', help='Produce fasta of TVR+tel consensus for each allele')
+	parser.add_argument('--telogator-pickle',   required=False, default=False, action='store_true', help='Produce pickle which can be reprocessed by telogator.py')
 	args = parser.parse_args()
 
 	IN_DIR = args.i
@@ -90,6 +91,7 @@ def main(raw_args=None):
 	TEL_SEQUENCES_FASTA  = IN_DIR + 'sequences-tel.fa'
 	SUB_SEQUENCES_FASTA  = IN_DIR + 'sequences-sub.fa'
 	READ_SEQUENCES_FASTA = IN_DIR + 'sequences-read.fa'
+	NUCL_CONSENSUS_FASTA = IN_DIR + 'nucl-consensus.fa'
 	#
 	TELCOMP_DIR    = IN_DIR + 'phased_tel_composition/'
 	DENDROGRAM_DIR = IN_DIR + 'phased_tel_dendrograms/'
@@ -113,6 +115,7 @@ def main(raw_args=None):
 	TREECUT_TSV         = args.tc
 	MIN_CANONICAL_FRAC  = args.cp/100.
 	MUSCLE_EXE          = args.m
+	NUCL_CONSENSUS      = args.nucl_consensus
 
 	if TEL_SEQ_PLOTS:
 		makedir(TELCOMP_DIR)
@@ -147,6 +150,9 @@ def main(raw_args=None):
 			KMER_COLORS.append(splt[2])
 			KMER_LETTER.append(splt[3])
 			KMER_FLAGS.append(splt[4])
+			if 'canonical' in KMER_FLAGS[-1]:
+				LONG_CANONICAL_STRING     = KMER_LIST[-1]*100000
+				LONG_CANONICAL_STRING_REV = RC(KMER_LIST[-1])*100000
 	f.close()
 	#
 	sorted_kmer_dat  = sorted(list(set([(len(KMER_LIST[n]), KMER_LIST[n], KMER_COLORS[n], KMER_LETTER[n], KMER_FLAGS[n]) for n in range(len(KMER_LIST))])), reverse=True)	# sort by length
@@ -345,6 +351,9 @@ def main(raw_args=None):
 		f_entire   = open(READ_SEQUENCES_FASTA, 'w')
 		ALLELE_CLUST_DAT = []
 	#
+	if NUCL_CONSENSUS:
+		f_nucl_consensus = open(NUCL_CONSENSUS_FASTA, 'w')
+	#
 	unexplained_telseq_dict = {}
 	allele_count_by_chr     = {}
 	#
@@ -479,8 +488,9 @@ def main(raw_args=None):
 			#
 			########################################################
 			if TEL_SEQ_PLOTS:
-				kmer_hit_dat = []
-				rlens_out    = []
+				kmer_hit_dat   = []
+				rlens_out      = []
+				rdat_for_clust = []
 				for i in ind_list:
 					my_rnm  = COMBINED_ANCHORS[k][i][0]
 					my_tlen = COMBINED_ANCHORS[k][i][3]
@@ -540,6 +550,7 @@ def main(raw_args=None):
 					out_readname = my_rnm
 					f_entire.write('>' + out_readname + '\n')
 					f_entire.write(my_rdat + '\n')
+					rdat_for_clust.append(copy.copy(my_telseq))
 					#
 					# get kmer hits
 					#
@@ -576,7 +587,7 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr2q':
+				if True or plotname_chr == 'chr1p':
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
@@ -627,6 +638,9 @@ def main(raw_args=None):
 							consensus_tl_allele = np.percentile(allele_tlens, my_percentile)
 						#
 						if allele_readcount >= MIN_READS_PER_PHASE:
+							#
+							# data for output results tsv
+							#
 							if my_chr not in allele_count_by_chr:
 								allele_count_by_chr[my_chr] = 0
 							ALLELE_CLUST_DAT.append([my_chr,
@@ -639,6 +653,33 @@ def main(raw_args=None):
 								                    str(len(allele_consensus_out)),
 								                    allele_consensus_out])
 							allele_count_by_chr[my_chr] += 1
+							#
+							# get consensus nucleotide sequence for this allele, if desired
+							# --- get readdat
+							# --- remove subtel
+							# --- buffer with canonical
+							# --- MSA --> consensus
+							#
+							if NUCL_CONSENSUS:
+								allele_rdat       = [rdat_for_clust[n] for n in read_clust_dat[0][allele_i]]
+								allele_subtel_len = [read_clust_dat[3][n] for n in read_clust_dat[0][allele_i]]
+								max_allele_rlen   = max([len(allele_rdat[n]) - allele_subtel_len[n] for n in range(len(allele_rdat))])
+								if my_chr[-1] == 'p':
+									allele_rdat = [allele_rdat[n][:-allele_subtel_len[n]] for n in range(len(allele_rdat))]
+									allele_rdat = [LONG_CANONICAL_STRING + n for n in allele_rdat]
+									allele_rdat = [n[-max_allele_rlen:] for n in allele_rdat]
+								elif my_chr[-1] == 'q':
+									allele_rdat = [allele_rdat[n][allele_subtel_len[n]:] for n in range(len(allele_rdat))]
+									allele_rdat = [n + LONG_CANONICAL_STRING_REV for n in allele_rdat]
+									allele_rdat = [n[:max_allele_rlen] for n in allele_rdat]
+								[allele_nucl_outseq, allele_nucl_consensus] = get_muscle_msa(allele_rdat, MUSCLE_EXE, working_dir=IN_DIR, mode='nucl')
+								allele_rdat_outname = my_chr + '_' + str(allele_count_by_chr[my_chr])
+								if my_chr[-1] == 'p':	# flip p around so everything is in same orientation: subtel --> tel
+									f_nucl_consensus.write('>' + allele_rdat_outname + '_RC\n')
+									f_nucl_consensus.write(RC(allele_nucl_consensus) + '\n')
+								elif my_chr[-1] == 'q':
+									f_nucl_consensus.write('>' + allele_rdat_outname + '\n')
+									f_nucl_consensus.write(allele_nucl_consensus + '\n')
 					#
 					# adjust kmer_hit_dat based on the filters and etc that were applied during clustering
 					#
@@ -703,7 +744,9 @@ def main(raw_args=None):
 		f_allele.close()
 		#
 		os.system('cat ' + TRAINING_DIR + '*_tvrtel.tsv > ' + TRAINING_DIR + 'all-tvrtel.tsv')
-
+	#
+	if NUCL_CONSENSUS:
+		f_nucl_consensus.close()
 	#
 	if TELOGATOR_PICKLE:
 		f = open(MERGED_ALNS, 'wb')

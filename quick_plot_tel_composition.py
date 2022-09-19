@@ -12,7 +12,7 @@ import numpy as np
 from source.tg_kmer   import get_nonoverlapping_kmer_hits
 from source.tg_plot   import plot_kmer_hits
 from source.tg_reader import TG_Reader
-from source.tg_util   import RC, cluster_list, LEXICO_2_IND
+from source.tg_util   import exists_and_is_nonzero, RC, cluster_list, LEXICO_2_IND
 
 DUMMY_MAPQ = 60	# for fasta input
 DUMMY_DBTA = 0

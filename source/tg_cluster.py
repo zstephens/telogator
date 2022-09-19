@@ -61,7 +61,7 @@ TVR_CANON_FILT_PARAMS_LENIENT = ( 5, 0.20,  50)
 MAX_TVR_LEN       = 8000	# ignore variant repeats past this point when finding TVR boundary
 MAX_TVR_LEN_SHORT = 3000	# when examining TVRs with very few variant repeats
 
-def write_scoring_matrix(fn):
+def write_amino_scoring_matrix(fn):
 	f = open(fn, 'w')
 	f.write('   A  R  N  D  C  Q  E  G  H  I  L  K  M  F  P  S  T  W  Y  V  B  J  Z  X  *' + '\n')
 	f.write('A  1  0  0  0  5  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0 -4' + '\n')
@@ -91,7 +91,37 @@ def write_scoring_matrix(fn):
 	f.write('* -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  1' + '\n')
 	f.close()
 
-def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={}, max_gap_frac=0.60):
+def write_nucl_scoring_matrix(fn):
+	f = open(fn, 'w')
+	f.write('   A  R  N  D  C  Q  E  G  H  I  L  K  M  F  P  S  T  W  Y  V  B  J  Z  X  *' + '\n')
+	f.write('A  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  0 -4' + '\n')
+	f.write('R -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('N -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('D -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('C -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('Q -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('E -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('G -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('H -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('I -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('L -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('K -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('M -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('F -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('P -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('S -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('T -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('W -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('Y -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -4 -1 -4' + '\n')
+	f.write('V -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -4 -1 -4' + '\n')
+	f.write('B -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -4 -1 -4' + '\n')
+	f.write('J -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -4 -1 -4' + '\n')
+	f.write('Z -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  5 -1 -4' + '\n')
+	f.write('X -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -4' + '\n')
+	f.write('* -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  1' + '\n')
+	f.close()
+
+def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={}, max_gap_frac=0.60, mode='amino'):
 	# write sequences to a temp fasta
 	temp_fasta = working_dir + 'clust_sequences.fa'
 	f = open(temp_fasta, 'w')
@@ -103,8 +133,15 @@ def get_muscle_msa(input_sequences, muscle_exe, working_dir='', char_score_adj={
 	aln_fasta   = working_dir + 'clust_aln.fa'
 	muscle_log  = working_dir + 'muscle.log'
 	matrix      = working_dir + 'scoring_matrix.txt'
-	write_scoring_matrix(matrix)
-	score_param = '-seqtype protein -gapopen -12.0 -gapextend -4.0 -center 0.0 -matrix ' + matrix
+	if mode == 'amino':
+		write_amino_scoring_matrix(matrix)
+		score_param = '-seqtype protein -gapopen -12.0 -gapextend -4.0 -center 0.0 -matrix ' + matrix
+	elif mode == 'nucl':
+		write_nucl_scoring_matrix(matrix)
+		score_param = '-seqtype dna -gapopen -12.0 -gapextend -4.0 -center 0.0 -matrix ' + matrix
+	else:
+		print('Error: get_muscle_msa mode must be amino or nucl')
+		exit(1)
 	score_param += ' -maxiters 2'	# use if muscle is crashing on "refining bipartite" steps
 	cmd = muscle_exe + ' -in ' + temp_fasta + ' -out ' + aln_fasta + ' ' + score_param + ' > ' + muscle_log + ' 2>&1'
 	os.system(cmd)
@@ -289,6 +326,47 @@ def parallel_alignment_job(our_indices, sequences, gap_bool, pq, out_dict, scori
 			f.write(seq_i + '\t' + seq_j + '\t' + str(aln_score) + '\t' + str(iden_score) + '\t' + str(rand_score) + '\n')
 			f.close()
 		out_dict[(i,j)] = my_dist
+
+#
+#
+#
+def quick_alignment_distance(seq_i, seq_j, scoring_matrix=None, gap_bool=(True,True)):
+	#
+	# aln score
+	#
+	if scoring_matrix == None:
+		aln = pairwise2.align.globalms(seq_i, seq_j, MATCH_NORMAL, XMATCH_NORMAL, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+		iden_score = MATCH_NORMAL*max(len(seq_i), len(seq_j))
+	else:
+		aln = pairwise2.align.globalds(seq_i, seq_j, scoring_matrix, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+		is1 = sum([scoring_matrix[(n,n)] for n in seq_i])
+		is2 = sum([scoring_matrix[(n,n)] for n in seq_j])
+		iden_score = max(is1, is2)
+	aln_score = int(aln[0].score)
+	#
+	# rand score
+	#
+	rand_scores = []
+	for k in range(RAND_SHUFFLE_COUNT):
+		if scoring_matrix == None:
+			rand_aln = pairwise2.align.globalms(shuffle_seq(seq_i), shuffle_seq(seq_j), MATCH_NORMAL, XMATCH_NORMAL, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+		else:
+			rand_aln = pairwise2.align.globalds(shuffle_seq(seq_i), shuffle_seq(seq_j), scoring_matrix, GAP_OPEN, GAP_EXT, penalize_end_gaps=gap_bool)
+		rand_scores.append(rand_aln[0].score)
+	rand_score = int(np.mean(rand_scores))
+	#
+	# distance calculation
+	#
+	if rand_score >= aln_score:
+		my_dist = MAX_SEQ_DIST
+	else:
+		my_dist = min(-np.log((aln_score - rand_score)/(iden_score - rand_score)), MAX_SEQ_DIST)
+	my_dist = max(my_dist, MIN_SEQ_DIST)
+	#
+	# output
+	#
+	print(aln_score, rand_score, iden_score, '{0:0.3f}'.format(my_dist))
+	return my_dist
 
 #
 #
