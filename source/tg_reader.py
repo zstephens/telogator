@@ -70,9 +70,33 @@ class TG_Reader:
 				self.buffer = []
 			return out_dat
 
+	#
+	# returns list of [(readname1, readsequence1, qualitysequence1), (readname2, readsequence2, qualitysequence2), ...]
+	#
+	def get_all_reads(self):
+		all_read_dat = []
+		while True:
+			read_dat = self.get_next_read()
+			if not read_dat[0]:
+				break
+			all_read_dat.append((read_dat[0], read_dat[1], read_dat[2]))
+		return all_read_dat
+
 	def close(self):
 		self.f.close()
 
+#
+# a convenience function to grab all reads from a file in a single line
+#
+def quick_grab_all_reads(fn):
+	my_reader = TG_Reader(fn, verbose=False)
+	all_read_dat = my_reader.get_all_reads()
+	my_reader.close()
+	return all_read_dat
+
+#
+# a quick test
+#
 if __name__ == '__main__':
 	#
 	IN_READS_TEST = sys.argv[1]

@@ -81,9 +81,9 @@ def main(raw_args=None):
 			truth_dat[splt[0].replace('_','')] = (int(splt[1]), int(splt[2]))
 		f.close()
 		#
-		telogator_tlens = OUT_BASE + rd + '/telogator/results.tsv'
+		telogator_tlens = OUT_BASE + rd + '/telogator/tlens_by_chr.tsv'
 		if exists_and_is_nonzero(telogator_tlens) == False:
-			print(rd, 'missing telogator/results.tsv...')
+			print(rd, 'missing telogator/tlens_by_chr.tsv...')
 			continue
 		telogator_dat = {}	# [chr] = (anchor_pos, [list, of, tel, lens, ...])
 		f = open(telogator_tlens, 'r')
@@ -95,7 +95,7 @@ def main(raw_args=None):
 				elif splt[0][:3] == 'alt':
 					tg_ref = ''.join(splt[0].split('_')[:-1])
 				tg_pos = int(splt[1])
-				tg_len_list = [int(n) for n in splt[2].split(',')]
+				tg_len_list = [int(n) for n in splt[3].split(',')]
 				if tg_ref not in telogator_dat:
 					telogator_dat[tg_ref] = (tg_pos, tg_len_list)
 				elif len(tg_len_list) > len(telogator_dat[tg_ref][1]):

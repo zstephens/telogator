@@ -178,7 +178,7 @@ def main(raw_args=None):
 			sp.append(subprocess.Popen(tel_lst))
 		exit_codes = [p.wait() for p in sp]
 		print('exit codes:', exit_codes)
-		com_cmd = 'python3 ' + MERGEJOBS_PY + ' -i ' + out_dir + ' -gt ' + my_tlen + ' -t max -cr 1 --pbsim'
+		com_cmd = 'python3 ' + MERGEJOBS_PY + ' -i ' + out_dir + ' -gt ' + my_tlen + ' -t p90 -rc 1 --pbsim'
 		os.system(com_cmd)
 
 	#
