@@ -3,13 +3,13 @@ A method for measuring chromosome-specific TL from long reads.
 
 ## (1) making T2T + alt subtel reference:
 
-Obtain t2t reference sequence from https://github.com/marbl/CHM13 (`chm13.draft_v1.1.fa`)
+Obtain t2t reference sequence from https://github.com/marbl/CHM13 (`chm13v2.0.fa`)
 
 Append alternate subtelomere assemblies:
 
 `gunzip resources/stong_subtels.fa.gz`  
 
-`cat chm13.draft_v1.1.fa stong_subtels.fa > t2t-and-subtel.fa`  
+`cat chm13v2.0.fa stong_subtels.fa > t2t-and-subtel.fa`  
 
 `samtools faidx t2t-and-subtel.fa`  
 
