@@ -369,21 +369,27 @@ def tel_len_violin_plot(tel_len_dict, out_fn, plot_means=True, ground_truth_dict
 	               'skip_plot':[],
 	               'include_unanchored':False,
 	               'boxplot':False,
-	               'boxfliers':False}
+	               'boxfliers':False,
+	               'custom_yticks':None}
 	for k in custom_plot_params.keys():
 		plot_params[k] = custom_plot_params[k]
 	#
 	xlab = ['-'] + [str(n) for n in range(1,22+1)] + ['X', 'Y']
 	xtck = list(range(1,len(xlab)+1))
 	ydel = plot_params['y_step']
-	(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
-	ytck = list(range(-q_ymax, p_ymax+ydel, ydel))
-	ylab = []
-	for n in ytck:
-		if n == 0:
-			ylab.append('')
-		else:
-			ylab.append(str(abs(n)//1000) + 'kb')
+	if plot_params['custom_yticks'] != None:
+		(p_ymax, q_ymax) = (plot_params['custom_yticks'][0][-1], -plot_params['custom_yticks'][0][0])
+		ytck = plot_params['custom_yticks'][0]
+		ylab = plot_params['custom_yticks'][1]
+	else:
+		(p_ymax, q_ymax) = (plot_params['p_ymax'], plot_params['q_ymax'])
+		ytck = list(range(-q_ymax, p_ymax+ydel, ydel))
+		ylab = []
+		for n in ytck:
+			if n == 0:
+				ylab.append('')
+			else:
+				ylab.append(str(abs(n)//1000) + 'kb')
 	#
 	ref_2_x = {'chr'+xlab[i]:xtck[i] for i in range(len(xlab))}
 	ref_2_x['unanchored'] = xtck[0]

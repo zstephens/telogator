@@ -145,7 +145,9 @@ def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='
 		for n in alns:
 			print(n[:7], 'rdat len:', len(n[7]))
 		print()
-	r_coords = [[alns[n][0], alns[n][1], n] for n in range(len(alns))]
+	r_coords = [[alns[n][0], alns[n][1], n] for n in range(len(alns)) if (alns[n][0] != None and alns[n][1] != None)]
+	if len(r_coords) == 0:
+		return alns
 	clust    = cluster_ranges(r_coords)
 	any_lap  = any([len(n) > 1 for n in clust])
 	#

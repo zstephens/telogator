@@ -9,7 +9,7 @@ import sys
 
 import numpy as np
 
-from source.tg_cluster import cluster_tel_sequences, convert_colorvec_to_kmerhits, get_muscle_msa
+from source.tg_cluster import cluster_consensus_tvr, cluster_tel_sequences, convert_colorvec_to_kmerhits, get_muscle_msa
 from source.tg_kmer    import get_nonoverlapping_kmer_hits, get_telomere_kmer_frac
 from source.tg_plot    import plot_kmer_hits, tel_len_violin_plot, anchor_confusion_matrix
 from source.tg_util    import RC, cluster_list, LEXICO_2_IND, exists_and_is_nonzero, makedir
@@ -27,29 +27,36 @@ INCLUDE_SUBTEL_BUFF = 500	# how much into the subtel alignment should we conside
 #
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='merge_jobs.py')
-	parser.add_argument('-i',  type=str, required=True,                  metavar='* in_dir/',      help="* Path to telogator results directory")
-	parser.add_argument('-r',  type=str, required=False, default='hifi', metavar='[hifi]',         help="Type of reads (hifi, clr, ont)")
-	parser.add_argument('-t',  type=str, required=False, default='p90',  metavar='[p90]',          help="Method for computing chr TL (mean/median/max/p90)")
-	parser.add_argument('-cd', type=int, required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
-	parser.add_argument('-cp', type=int, required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%%)")
-	parser.add_argument('-rc', type=int, required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
-	parser.add_argument('-ra', type=int, required=False, default=3,      metavar='[3]',            help="Minimum number of reads per phased allele")
-	parser.add_argument('-ta', type=str, required=False, default='max',  metavar='[max]',          help="Method for computing allele TL (mean/median/max/p90)")
-	parser.add_argument('-tc', type=str, required=False, default='',     metavar='treecuts.tsv',   help="Custom treecut vals during allele clustering")
+	parser.add_argument('-i',   type=str,   required=True,                  metavar='* in_dir/',      help="* Path to telogator results directory")
+	parser.add_argument('-r',   type=str,   required=False, default='hifi', metavar='[hifi]',         help="Type of reads (hifi, clr, ont)")
+	parser.add_argument('-t',   type=str,   required=False, default='p90',  metavar='[p90]',          help="Method for computing chr TL (mean/median/max/p90)")
+	parser.add_argument('-cd',  type=int,   required=False, default=2000,   metavar='[2000]',         help="Maximum distance apart to cluster anchor positions")
+	parser.add_argument('-cp',  type=int,   required=False, default=15,     metavar='[15]',           help="Mininum percentage of tel that must CCCTAA (15 = 15%%)")
+	parser.add_argument('-rc',  type=int,   required=False, default=2,      metavar='[2]',            help="Minimum number of reads per cluster")
 	#
 	parser.add_argument('-th', type=int, required=False, default=0,        metavar='[0]',            help="TelomereHunter tel_content (for benchmarking)")
 	parser.add_argument('-gt', type=str, required=False, default='',       metavar='tlens.tsv',      help="Ground truth tel lens (for benchmarking)")
 	parser.add_argument('-rl', type=int, required=False, default=50000,    metavar='[50000]',        help="Maximum y-axis value for readlength violin plots")
-	parser.add_argument('-k',  type=str, required=False, default='',       metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
-	parser.add_argument('-m',  type=str, required=False, default='muscle', metavar='muscle',         help="/path/to/muscle executable (needed for tel plotting)")
 	#
-	parser.add_argument('--pbsim',              required=False, default=False, action='store_true', help='Simulated data from pbsim, print out confusion matrix')
-	parser.add_argument('--tel-color-plots',    required=False, default=False, action='store_true', help='Produce telomere sequence composition plots')
-	parser.add_argument('--plot-denoised-tel',  required=False, default=False, action='store_true', help='Use denoised reads for sequence composition plotting')
+	parser.add_argument('--tel-color-plots',    required=False, default=False, action='store_true',     help='Produce telomere sequence composition plots')
+	parser.add_argument('--plot-denoised-tel',  required=False, default=False, action='store_true',     help='Use denoised reads for sequence composition plotting')
+	parser.add_argument('--estimate-rand',      required=False, default=False, action='store_true',     help='Use linear model to approximate rand aln score')
+	parser.add_argument('--only-tvr-pairwise',  required=False, default=False, action='store_true',     help='Only do final pairwise comparison of tvrs')
+	parser.add_argument('--aln-processes',      required=False, default=8,     type=int, metavar='[8]', help="Number of alignment processes to use")
+	parser.add_argument('-ra',  type=int,   required=False, default=3,        metavar='[3]',            help="Minimum number of reads per phased allele")
+	parser.add_argument('-ta',  type=str,   required=False, default='max',    metavar='[max]',          help="Method for computing allele TL (mean/median/max/p90)")
+	parser.add_argument('-tc',  type=str,   required=False, default='',       metavar='treecuts.tsv',   help="Custom treecut vals during allele clustering")
+	parser.add_argument('-tcm', type=float, required=False, default=0.045,    metavar='[0.045]',        help="Treecut val to use in clustering multimapped alleles")
+	parser.add_argument('-k',   type=str,   required=False, default='',       metavar='plot_kmers.tsv', help="Telomere kmers to use for composition plotting")
+	parser.add_argument('-m',   type=str,   required=False, default='muscle', metavar='muscle',         help="/path/to/muscle executable (needed for tel plotting)")
+	#
 	parser.add_argument('--more-tlen-plots',    required=False, default=False, action='store_true', help='Produce extra violin plots (TL)')
 	parser.add_argument('--more-readlen-plots', required=False, default=False, action='store_true', help='Produce extra violin plots (readlens)')
 	parser.add_argument('--nucl-consensus',     required=False, default=False, action='store_true', help='Produce fasta of TVR+tel consensus for each allele')
 	parser.add_argument('--telogator-pickle',   required=False, default=False, action='store_true', help='Produce pickle which can be reprocessed by telogator.py')
+	#
+	parser.add_argument('--pbsim',              required=False, default=False, action='store_true', help='Simulated data from pbsim, print out confusion matrix')
+	#
 	args = parser.parse_args()
 
 	IN_DIR = args.i
@@ -99,6 +106,7 @@ def main(raw_args=None):
 	TRAINING_DIR   = IN_DIR + 'phased_tel_dist-train/'
 	CONSENSUS_DIR  = IN_DIR + 'phased_tel_msa/'
 	ALLELE_OUT_FN  = IN_DIR + 'tlens_by_allele.tsv'
+	MULTIMAP_OUT   = IN_DIR + 'multimapped_alleles.tsv'
 
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.rc
@@ -108,14 +116,18 @@ def main(raw_args=None):
 	GROUND_TRUTH_TLENS  = args.gt
 	TEL_SEQ_PLOTS       = args.tel_color_plots
 	PLOT_DENOISED_CVECS = args.plot_denoised_tel
+	ESTIMATE_RAND       = args.estimate_rand
 	EXTRA_TLEN_PLOTS    = args.more_tlen_plots
 	EXTRA_READLEN_PLOTS = args.more_readlen_plots
 	EXTRA_READLEN_YMAX  = args.rl
 	TELOGATOR_PICKLE    = args.telogator_pickle
 	TREECUT_TSV         = args.tc
+	TREECUT_MULTIMAPPED = args.tcm
 	MIN_CANONICAL_FRAC  = args.cp/100.
 	MUSCLE_EXE          = args.m
 	NUCL_CONSENSUS      = args.nucl_consensus
+	ONLY_TVR_PAIRWISE   = args.only_tvr_pairwise
+	NUM_ALN_PROCESSES   = args.aln_processes
 
 	if TEL_SEQ_PLOTS:
 		makedir(TELCOMP_DIR)
@@ -587,7 +599,8 @@ def main(raw_args=None):
 				else:
 					plotname_chr = my_chr
 				#
-				if True or plotname_chr == 'chr1p':
+				#if plotname_chr == 'chr1p':
+				if ONLY_TVR_PAIRWISE == False:
 					zfcn = str(clust_num).zfill(2)
 					dendrogram_fn  = DENDROGRAM_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.png'
 					distmatrix_fn  = DISTMATRIX_DIR + 'cluster-' + zfcn + '_' + plotname_chr + '.npy'
@@ -602,7 +615,16 @@ def main(raw_args=None):
 					elif (my_chr,my_pos) in custom_treecut_vals:
 						my_tc = custom_treecut_vals[(my_chr,my_pos)]
 					#
-					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_METADATA, my_chr, my_pos, dist_in=distmatrix_fn, fig_name=dendrogram_fn, tree_cut=my_tc, msa_dir=IN_DIR, train_prefix=traindata_pref, save_msa=consensus_fn, muscle_exe=MUSCLE_EXE)
+					read_clust_dat = cluster_tel_sequences(kmer_hit_dat, KMER_METADATA, my_chr, my_pos,
+						                                   dist_in=distmatrix_fn,
+						                                   fig_name=dendrogram_fn,
+						                                   tree_cut=my_tc,
+						                                   alignment_processes=NUM_ALN_PROCESSES,
+						                                   msa_dir=IN_DIR,
+						                                   train_prefix=traindata_pref,
+						                                   save_msa=consensus_fn,
+						                                   muscle_exe=MUSCLE_EXE,
+						                                   approx_rand=ESTIMATE_RAND)
 					#
 					for allele_i in range(len(read_clust_dat[0])):
 						#
@@ -735,15 +757,54 @@ def main(raw_args=None):
 		f_entire.close()
 		f_subfasta.close()
 		f_telfasta.close()
+		if ONLY_TVR_PAIRWISE == False:
+			f_allele = open(ALLELE_OUT_FN, 'w')
+			f_allele.write('#chr' + '\t' + 'position' + '\t')
+			f_allele.write('allele_num' + '\t' + 'allele_TL_' + TL_METHOD_ALLELE + '\t' + 'read_allele_TLs' + '\t' + 'read_lengths' + '\t' + 'read_MAPQ' + '\t' + 'TVR_length' + '\t' + 'TVR_consensus' + '\n')
+			for i in range(len(ALLELE_CLUST_DAT)):
+				f_allele.write('\t'.join(ALLELE_CLUST_DAT[i]) + '\n')
+			f_allele.close()
+			#
+			os.system('cat ' + TRAINING_DIR + '*_tvrtel.tsv > ' + TRAINING_DIR + 'all-tvrtel.tsv')
 		#
-		f_allele = open(ALLELE_OUT_FN, 'w')
-		f_allele.write('#chr' + '\t' + 'position' + '\t')
-		f_allele.write('allele_num' + '\t' + 'allele_TL_' + TL_METHOD_ALLELE + '\t' + 'read_allele_TLs' + '\t' + 'read_lengths' + '\t' + 'read_MAPQ' + '\t' + 'TVR_length' + '\t' + 'TVR_consensus' + '\n')
-		for i in range(len(ALLELE_CLUST_DAT)):
-			f_allele.write('\t'.join(ALLELE_CLUST_DAT[i]) + '\n')
+		# collapse alleles with similar TVRs
+		#
+		f_allele   = open(ALLELE_OUT_FN, 'r')
+		all_labels = []
+		all_tvrs   = []
+		blank_tvr_count = 0
+		for line in f_allele:
+			if line[0] == '#':
+				continue
+			splt = line.strip().split('\t')
+			if int(splt[7]) > 0:
+				all_labels.append('_'.join(splt[:3]))
+				all_tvrs.append(splt[8])
+			else:
+				blank_tvr_count += 1
 		f_allele.close()
 		#
-		os.system('cat ' + TRAINING_DIR + '*_tvrtel.tsv > ' + TRAINING_DIR + 'all-tvrtel.tsv')
+		print('pairwise comparing all consensus TVR sequences...')
+		alltvr_clustdat = cluster_consensus_tvr(all_tvrs, KMER_METADATA,
+		                                        dist_in=DISTMATRIX_DIR+'all-tvrs.npy',
+		                                        fig_name=DENDROGRAM_DIR+'all-tvrs.png',
+		                                        samp_labels=all_labels,
+		                                        aln_mode='ms',
+		                                        linkage_method='complete',
+		                                        tree_cut=TREECUT_MULTIMAPPED,
+		                                        alignment_processes=NUM_ALN_PROCESSES,
+		                                        job=(1,1),
+		                                        dendrogram_height=12)
+		print(len(alltvr_clustdat), alltvr_clustdat)
+		f_multimap = open(MULTIMAP_OUT, 'w')
+		f_multimap.write('#UNIQUE_TVRS' + '\t' + str(len(alltvr_clustdat)) + '\n')
+		f_multimap.write('##ALLELE_COUNT' + '\t' + 'TVR_LENS' + '\t' + 'LABELS' + '\n')
+		for at_clust in alltvr_clustdat:
+			if len(at_clust) > 1:
+				my_lens   = [str(len(all_tvrs[n])) for n in at_clust]
+				my_labels = [all_labels[n] for n in at_clust]
+				f_multimap.write(str(len(at_clust)) + '\t' + ','.join(my_lens) + '\t' + ','.join(my_labels) + '\n')
+		f_multimap.close()
 	#
 	if NUCL_CONSENSUS:
 		f_nucl_consensus.close()

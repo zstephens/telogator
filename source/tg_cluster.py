@@ -231,17 +231,28 @@ def get_adj_from_gaps(s):
 def shuffle_seq(s):
 	return ''.join(random.sample(s,len(s)))
 
+#####
+##### linear regression parameters for estimating rand alignment score (old colors)
+#####
+####RAND_REG_BIAS    =  82.745688430256450
+####RAND_REG_WEIGHTS = [ 0.318626543939361,
+####                    -0.109363196930245,
+####                     0.049521602321889,
+####                    -0.546815984651203,
+####                     0.058014516390758,
+####                    -1.595058825106752,
+####                     6.719760869407775]
 #
-# linear regression parameters for estimating rand alignment score
+# linear regression parameters for estimating rand alignment score (new colors)
 #
-RAND_REG_BIAS    =  82.745688430256450
-RAND_REG_WEIGHTS = [ 0.318626543939361,
-                    -0.109363196930245,
-                     0.049521602321889,
-                    -0.546815984651203,
-                     0.058014516390758,
-                    -1.595058825106752,
-                     6.719760869407775]
+RAND_REG_BIAS    = 156.660399273161600
+RAND_REG_WEIGHTS = [ 0.360900872720303,
+                    -0.115378786823871,
+                     0.043744885084501,
+                    -0.592517362874134,
+                     0.221927915784329,
+                    -2.547859906771088,
+                     6.772960422330248]
 #
 def estimate_rand_score(seq1, seq2, aln_score, iden_score):
 	c1 = Counter(seq1)
@@ -503,7 +514,7 @@ def denoise_colorvec(v, min_size=10, max_gap_fill=50, chars_to_delete=[], char_t
 #
 #	repeats_metadata = [kmer_list, kmer_colors, kmer_letters, kmer_flags]
 #
-def cluster_tel_sequences(kmer_dat, repeats_metadata, my_chr, my_pos, dist_in=None, fig_name=None, msa_dir='', save_msa=None, train_prefix=None, tvr_truncate=3000, tree_cut=None, alignment_processes=8, muscle_exe='muscle'):
+def cluster_tel_sequences(kmer_dat, repeats_metadata, my_chr, my_pos, dist_in=None, fig_name=None, msa_dir='', save_msa=None, train_prefix=None, tvr_truncate=3000, tree_cut=None, alignment_processes=8, muscle_exe='muscle', approx_rand=False):
 	#
 	[kmer_list, kmer_colors, kmer_letters, kmer_flags] = repeats_metadata
 	#
@@ -623,7 +634,7 @@ def cluster_tel_sequences(kmer_dat, repeats_metadata, my_chr, my_pos, dist_in=No
 				train_handl.append(job_fn)
 				f = open(job_fn, 'w')
 				f.close()
-			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], tvrtel_regions, (True,True), pq, tvrtel_dist, None, train_handl[-1]))
+			p = multiprocessing.Process(target=parallel_alignment_job, args=(all_indices[i], tvrtel_regions, (True,True), pq, tvrtel_dist, None, train_handl[-1], approx_rand))
 			processes.append(p)
 		for i in range(alignment_processes):
 			processes[i].start()
@@ -785,8 +796,23 @@ def cluster_tel_sequences(kmer_dat, repeats_metadata, my_chr, my_pos, dist_in=No
 #
 #
 #
-def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=None, aln_mode='ms', tree_cut=4.30, alignment_processes=8, job=(1,1), dendrogram_height=12):
+def cluster_consensus_tvr(sequences, repeats_metadata, dist_in=None, fig_name=None, samp_labels=None, aln_mode='ms', linkage_method='complete', tree_cut=4.30, alignment_processes=8, job=(1,1), dendrogram_height=12):
+	#
 	n_seq = len(sequences)
+	#
+	[kmer_list, kmer_colors, kmer_letters, kmer_flags] = repeats_metadata
+	#
+	canonical_letter = None
+	for i in range(len(kmer_list)):
+		if 'canonical' in kmer_flags[i]:
+			canonical_letter = kmer_letters[i]
+		if kmer_letters[i] == UNKNOWN_LETTER:
+			print('Error: character A is reserved for unknown sequence')
+			exit(1)
+	if canonical_letter == None:
+		print('Error: cluster_consensus_tvr() received a kmer list that does not have CCCTAA or TTAGGG')
+		exit(1)
+	#
 	if dist_in == None or exists_and_is_nonzero(dist_in) == False:
 		dist_matrix = np.zeros((n_seq,n_seq))
 		pw2_gap     = (False, False)
@@ -798,9 +824,6 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 				k += 1
 		#
 		#	scoring matrix
-		#
-		UNKNOWN_LETTER   = 'A'
-		canonical_letter = 'C'
 		#
 		letters = AMINO
 		scoring_matrix = {}
@@ -866,7 +889,7 @@ def cluster_consensus_tel(sequences, dist_in=None, fig_name=None, samp_labels=No
 	#
 	if job[1] == 1 or job[0] == 0:
 		d_arr = squareform(dist_matrix)
-		Zread = linkage(d_arr, method='complete')
+		Zread = linkage(d_arr, method=linkage_method)
 		#
 		if fig_name != None:
 			mpl.rcParams.update({'font.size': 16, 'font.weight':'bold'})

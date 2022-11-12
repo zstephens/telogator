@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as mpl
 import matplotlib.colors as colors
 
-from source.tg_cluster import cluster_consensus_tel, convert_colorvec_to_kmerhits, MIN_MSD, quick_alignment_distance
+from source.tg_cluster import cluster_consensus_tvr, convert_colorvec_to_kmerhits, MIN_MSD, quick_alignment_distance
 from source.tg_plot    import plot_kmer_hits, tel_len_bar_plot
 from source.tg_reader  import TG_Reader
 from source.tg_util    import exists_and_is_nonzero, makedir, RC
@@ -227,7 +227,7 @@ def main(raw_args=None):
 		barplot_param = {'p_ymax':6, 'q_ymax':6, 'y_step':1, 'p_color':'gray', 'q_color':'gray', 'y_label':'<-- q    mean #alleles/sample    p -->', 'hatch_data':multimapped_dat_norm}
 		tel_len_bar_plot(allelecount_dat_norm, barplot_fn, custom_plot_params=barplot_param)
 	#
-	clustdat = cluster_consensus_tel(all_tvrs,
+	clustdat = cluster_consensus_tvr(all_tvrs,
 		                             dist_in=out_dist,
 		                             fig_name=out_fig,
 		                             samp_labels=my_labels,
