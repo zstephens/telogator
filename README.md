@@ -1,6 +1,10 @@
 # Telogator
 A method for measuring chromosome-specific TL from long reads.
 
+If this software has been useful for your work, please cite us at:
+
+Stephens, Zachary, et al. "Telogator: a method for reporting chromosome-specific telomere lengths from long reads." *Bioinformatics* 38.7 (2022): 1788-1793. https://doi.org/10.1093/bioinformatics/btac005
+
 ## (1) making T2T + alt subtel reference:
 
 Obtain t2t reference sequence from https://github.com/marbl/CHM13 (`chm13v2.0.fa`)
@@ -8,32 +12,36 @@ Obtain t2t reference sequence from https://github.com/marbl/CHM13 (`chm13v2.0.fa
 Append alternate subtelomere assemblies:
 
 `gunzip resources/stong_subtels.fa.gz`  
-
 `cat chm13v2.0.fa stong_subtels.fa > t2t-and-subtel.fa`  
-
 `samtools faidx t2t-and-subtel.fa`  
 
-## (2) align reads to whole genome (PacBio CLR):
+## (2) align reads to whole genome reference:
+
+For PacBio CLR reads:
 
 `pbmm2 align t2t-and-subtel.fa clr-reads.fa.gz aln.bam --preset SUBREAD --sort`  
 
+For PacBio HiFi reads:
+
+`pbmm2 align t2t-and-subtel.fa hifi-reads.fa.gz aln.bam --preset HiFi --sort`  
+
+For Oxford Nanopore long (noisy) reads:
+
+`minimap2 -ax map-ont -t 6 -N 5 -Y -L t2t-and-subtel.fa ont-reads.fa.gz | samtools view -bhS - > aln-unsort.bam`  
+`samtools sort -o aln.bam aln-unsort.bam`  
+`samtools index aln.bam`  
+
 ## (3) extract reads mapped to subtels:
 
-`python3 grab_reads_from_subtel_aln.py \ `  
+`python3 get_subtel_reads.py \ `  
 `    --bam aln.bam \ `  
 `    --fa clr-reads.fa.gz \ `  
 `    --out subtel-reads.fa.gz \ `  
 `    --bed resources/subtel_regions.bed `  
 
-## (4 - PacBio CLR) align subtel reads to telogator reference:
+## (4) align subtel reads to telogator reference:
 
-`gunzip resources/t2t-telogator-ref.fa.gz`  
-
-`pbmm2 align t2t-telogator-ref.fa subtel-reads.fa.gz subtel_aln.bam --preset SUBREAD --sort`  
-
-## (4 - PacBio HiFi) align subtel reads to telogator reference:
-
-We recommend using the [winnowmap](https://github.com/marbl/Winnowmap) aligner:
+We recommend using the [winnowmap](https://github.com/marbl/Winnowmap) aligner for best results:
 
 `winnowmap -W resources/repetitive_k15.txt \ `  
 `    -ax map-pb \ `  
@@ -44,23 +52,10 @@ We recommend using the [winnowmap](https://github.com/marbl/Winnowmap) aligner:
 `samtools sort -o subtel_aln.bam subtel_aln-unsort.bam`  
 `samtools index subtel_aln.bam`  
 
+Though this step could be done using the same aligners as in step 2, if desired.
+
 ## (5) run telogator on subtel-only alignment:
 
-`samtools view subtel_aln.bam | python3 telogator.py -i - -o telogator_out/`  
+`python3 telogator.py -i subtel_aln.bam -o telogator_out/`  
 
-For Nanopore reads which may contain systematic errors in telomere regions, using the `-k` input option to select `resources/nanopore_kmers.tsv` may be advised. See [this preprint](https://www.biorxiv.org/content/10.1101/2022.01.11.475254v1) for more information.
-
-## (6) create plots and output report:
-
-`python3 merge_jobs.py -i telogator_out/`  
-
-## Output files:
-
-* `results.tsv`: telomere positions and lengths. column format:  
- * chr, boundary position, consensus TL, TL for each read, readlen for each read
-* `tel_lens_violin_*.png`: violin plots of telomere lengths  
- * `all`: all reads
- * `chr`: only reads anchored to t2t reference
- * `alt`: only reads anchored to alternate assemblies
-
-Additionally, the `--extra-readlen-plots` and `-rl` parameters can be used with `merge_jobs.py` to produce violin plots of read lengths, for QC purposes.
+The `-p` input option specifies the number of processes to use (default: 4).
