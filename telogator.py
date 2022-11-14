@@ -393,7 +393,7 @@ def main(raw_args=None):
 		sorted_ref_keys.append((my_ind, LEXICO_2_IND[my_chr[:-1]], my_chr, k))
 	sorted_ref_keys = sorted(sorted_ref_keys)
 	#
-	print('clustering anchored tels by position...')
+	print('clustering anchored tels by position & filtering by read count...')
 	CHR_TEL_DAT = []
 	TEL_LEN_OUT = {}	# indexed by chr
 	READLEN_OUT = {}	# indexed by chr
@@ -408,7 +408,7 @@ def main(raw_args=None):
 		num_clust = 0
 		num_reads = 0
 		for cl in clusters:
-			if len(cl) <= MIN_READS_PER_CLUST:
+			if len(cl) < MIN_READS_PER_CLUST:
 				continue
 			num_clust += 1
 			num_reads += len(cl)
