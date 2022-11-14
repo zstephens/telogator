@@ -11,8 +11,7 @@ Obtain t2t reference sequence from https://github.com/marbl/CHM13 (`chm13v2.0.fa
 
 Append alternate subtelomere assemblies:
 
-`gunzip resources/stong_subtels.fa.gz`  
-`cat chm13v2.0.fa stong_subtels.fa > t2t-and-subtel.fa`  
+`cat chm13v2.0.fa resources/stong_subtels.fa > t2t-and-subtel.fa`  
 `samtools faidx t2t-and-subtel.fa`  
 
 ## (2) align reads to whole genome reference:
