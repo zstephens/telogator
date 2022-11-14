@@ -4,19 +4,60 @@ import regex
 
 import numpy as np
 
-from source.tg_prob import DiscreteDistribution
-from source.tg_util import RC
+from source.tg_util import exists_and_is_nonzero, RC
 
+# hardcoded parameters
 COEF_EDIT_0 = 2.
 COEF_EDIT_1 = 1.
+#
+INCLUDE_SUBTEL_BUFF = 500
 
 #
 #
-def get_telomere_kmer_density(read_dat, kmer_list, tel_window, smoothing=False):
+#
+def read_kmer_tsv(fn):
+	if exists_and_is_nonzero(fn) == False:
+		print('Error: ' + fn + ' not found.')
+		exit(1)
+	#
+	KMER_LIST   = []
+	KMER_COLORS = []
+	KMER_LETTER = []
+	KMER_FLAGS  = []
+	#
+	f = open(fn,'r')
+	for line in f:
+		if line[0] != '#' and len(line.strip()):
+			splt = line.strip().split('\t')
+			KMER_LIST.append(splt[0])
+			KMER_COLORS.append(splt[1])
+			KMER_LETTER.append(splt[2])
+			KMER_FLAGS.append(splt[3])
+			if 'canonical' in KMER_FLAGS[-1]:
+				CANONICAL_STRING = KMER_LIST[-1]
+	f.close()
+	#
+	sorted_kmer_dat  = sorted(list(set([(len(KMER_LIST[n]), KMER_LIST[n], KMER_COLORS[n], KMER_LETTER[n], KMER_FLAGS[n]) for n in range(len(KMER_LIST))])), reverse=True)	# sort by length
+	KMER_LIST        = [n[1] for n in sorted_kmer_dat]
+	KMER_COLORS      = [n[2] for n in sorted_kmer_dat]
+	KMER_LETTER      = [n[3] for n in sorted_kmer_dat]
+	KMER_FLAGS       = [n[4].split(',') for n in sorted_kmer_dat]
+	KMER_METADATA    = [KMER_LIST, KMER_COLORS, KMER_LETTER, KMER_FLAGS]
+	KMER_ISSUBSTRING = []
+	for i in range(len(KMER_LIST)):
+		KMER_ISSUBSTRING.append([j for j in range(len(KMER_LIST)) if (j != i and KMER_LIST[i] in KMER_LIST[j])])
+	#
+	return (KMER_METADATA, KMER_ISSUBSTRING, CANONICAL_STRING)
+
+#
+#
+#
+def get_telomere_kmer_density(read_dat, kmer_list, tel_window, mode='hifi', smoothing=False):
 	re_hits = [[], []]
 	for i in range(len(kmer_list)):
 		re_hits[0].extend([(n.start(0), n.end(0), i, 0) for n in re.finditer(kmer_list[i], read_dat)])
-		re_hits[1].extend([(n.start(0), n.end(0), i, 1) for n in regex.finditer("("+kmer_list[i]+"){e<=1}", read_dat, overlapped=True)])
+		if mode in ['clr', 'ont']:
+			re_hits[1].extend([(n.start(0), n.end(0), i, 1) for n in regex.finditer("("+kmer_list[i]+"){e<=1}", read_dat, overlapped=True)])
 	#
 	tel_hit_p0 = np.zeros(len(read_dat))
 	tel_hit_p1 = np.zeros(len(read_dat))
@@ -41,7 +82,8 @@ def get_telomere_kmer_density(read_dat, kmer_list, tel_window, smoothing=False):
 
 #
 #
-def get_telomere_kmer_frac(read_dat, kmer_list, mode='hifi'):
+#
+def get_telomere_base_count(read_dat, kmer_list, mode='hifi'):
 	re_hits = []
 	for i in range(len(kmer_list)):
 		re_hits.extend([(n.start(0), n.end(0), i, 0) for n in re.finditer(kmer_list[i], read_dat)])
@@ -52,12 +94,12 @@ def get_telomere_kmer_frac(read_dat, kmer_list, mode='hifi'):
 	for re_hit in re_hits:
 		tel_hit[re_hit[0]:re_hit[1]] = 1
 	tel_hit = tel_hit.tolist()
-	#
-	return float(tel_hit.count(1))/len(read_dat)
+	return tel_hit.count(1)
 
 #
 #
-def get_telomere_regions(td_p_e0, td_p_e1, td_q_e0, td_q_e1, tel_window, pthresh, smoothing=True):
+#
+def get_telomere_regions(td_p_e0, td_p_e1, td_q_e0, td_q_e1, tel_window, pthresh, mode='hifi', smoothing=True):
 	min_win_pos  = min([len(td_p_e0), len(td_p_e1), len(td_q_e0), len(td_q_e1)])
 	max_win_pos  = max([len(td_p_e0), len(td_p_e1), len(td_q_e0), len(td_q_e1)])
 	p_vs_q_power = np.zeros(max_win_pos)
@@ -69,7 +111,13 @@ def get_telomere_regions(td_p_e0, td_p_e1, td_q_e0, td_q_e1, tel_window, pthresh
 	for i in range(min_win_pos):
 		c0 = td_p_e0[i] - td_q_e0[i]
 		c1 = td_p_e1[i] - td_q_e1[i]
-		p_vs_q_power[i] = (COEF_EDIT_0*(c0) + COEF_EDIT_1*(c1)) / float(COEF_EDIT_0 + COEF_EDIT_1)
+		if mode in ['hifi']:
+			p_vs_q_power[i] = (COEF_EDIT_0*(c0)) / float(COEF_EDIT_0)
+		elif mode in ['clr', 'ont']:
+			p_vs_q_power[i] = (COEF_EDIT_0*(c0) + COEF_EDIT_1*(c1)) / float(COEF_EDIT_0 + COEF_EDIT_1)
+		else:
+			print('Error: read mode must be hifi/clr/ont')
+			exit(1)
 	if smoothing:
 		p_vs_q_power = wavelet_smooth(p_vs_q_power)
 	p_vs_q_power = p_vs_q_power[:-tel_window]
@@ -126,54 +174,6 @@ def wavelet_smooth(x, wavelet="db4", smoothing_level=5, fail_sigma=1e-3):
 	return y
 
 #
-#
-def write_kmer_prob_matrix(fn, kmer_list, trans_matrix):
-	f = open(fn, 'w')
-	for k in kmer_list:
-		f.write('#\t' + k + '\n')
-	for i in range(len(kmer_list)):
-		f.write('\t'.join([str(n) for n in trans_matrix[i,:].tolist()]) + '\n')
-	f.close()
-
-#
-#
-def read_kmer_prob_matrix(fn, return_trans_dict=False):
-	keys = []
-	prob = []
-	f = open(fn, 'r')
-	for line in f:
-		splt = line.strip().split('\t')
-		if splt[0][0] == '#':
-			keys.append(splt[1])
-		else:
-			prob.append([float(n) for n in splt])
-	f.close()
-	prob = np.array(prob)
-	if return_trans_dict:
-		trans_dict = {}
-		for i in range(len(keys)):
-			trans_dict[keys[i]] = DiscreteDistribution(prob[i,:].tolist(), keys)
-		return trans_dict
-	else:
-		return (keys, prob)
-
-#
-#
-def sample_telomere(trans_dist_dict, length, tel_type='p', init_string='TAACCC'):
-	out_s = init_string
-	current_kmer = init_string
-	while len(out_s) < length:
-		next_kmer = trans_dist_dict[current_kmer].sample()
-		out_s += next_kmer
-		current_kmer = next_kmer
-	if tel_type == 'p':
-		return out_s
-	elif tel_type == 'q':
-		return RC(out_s)
-	else:
-		print('Error: unknown tel type in sample_telomere()')
-		exit(1)
-
 #
 #
 def get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING):
@@ -235,3 +235,72 @@ def get_nonoverlapping_kmer_hits(my_telseq, KMER_LIST, KMER_ISSUBSTRING):
 						out_dat[kmer_list_i][ksi] = [kmer_span_i[0], kmer_span_j[0]]
 	#
 	return out_dat
+
+#
+# anchored_tel_dat = ANCHORED_TEL_BY_CHR[k][i]
+#
+def get_telomere_composition(anchored_tel_dat, gtc_params):
+	[my_chr, clust_num, KMER_LIST, KMER_LIST_REV, KMER_ISSUBSTRING] = gtc_params
+	my_rnm  = anchored_tel_dat[0]
+	my_tlen = anchored_tel_dat[3]
+	my_type = anchored_tel_dat[4]
+	my_rdat = anchored_tel_dat[6]
+	my_alns = anchored_tel_dat[7]
+	#
+	my_anchor_ref_coords = sorted(anchored_tel_dat[2])
+	#
+	my_mapq    = None
+	my_dbta    = None	# distance between telomere and anchor
+	anchor_mai = None
+	for mai in range(len(my_alns)):
+		my_aln = my_alns[mai]
+		if my_aln[3]!= None and my_aln[4] != None and sorted([my_aln[3], my_aln[4]]) == my_anchor_ref_coords:
+			anchor_mai = mai
+	if anchor_mai != None:
+		my_mapq = my_alns[anchor_mai][6]
+		if my_alns[0][2][:3] == 'tel':		# tel is first alignment
+			my_dbta = my_alns[anchor_mai][0] - my_alns[0][1]
+		elif my_alns[-1][2][:3] == 'tel':	# tel is last alignment
+			my_dbta = my_alns[-1][0] - my_alns[anchor_mai][1]
+		if my_dbta == None or my_dbta < 0:
+			print('Error: we messed up trying to get your telomere-anchor dist:', k, i, my_dbta)
+	#
+	# adjusted telomere boundary
+	#
+	atb = my_tlen + my_dbta + INCLUDE_SUBTEL_BUFF
+	atb = min(atb, len(my_rdat))					# in case something crazy happens
+	#
+	if my_chr[-1] == 'p':
+		kmers_to_use = KMER_LIST
+		if my_type == 'p':
+			my_telseq = my_rdat[:atb]
+			my_subseq = my_rdat[atb:]
+		elif my_type == 'q':
+			my_telseq = RC(my_rdat[-atb:])
+			my_subseq = RC(my_rdat[:-atb])
+	elif my_chr[-1] == 'q':
+		kmers_to_use = KMER_LIST_REV
+		if my_type == 'p':
+			my_telseq = RC(my_rdat[:atb])
+			my_subseq = RC(my_rdat[atb:])
+		elif my_type == 'q':
+			my_telseq = my_rdat[-atb:]
+			my_subseq = my_rdat[:-atb]
+	#
+	# tel section of read, subtel section of read, entire read
+	#
+	out_fasta_dat = [('cluster-' + str(clust_num) + '_ref-' + my_chr + '_tel-' + my_type + '_' + my_rnm, my_telseq),
+	                 ('cluster-' + str(clust_num) + '_ref-' + my_chr + '_sub-' + my_type + '_' + my_rnm, my_subseq),
+	                 (my_rnm, my_rdat)]
+	#
+	# get kmer hits
+	#
+	# tel_composition_dat[0][kmer_list_i] = hits in current read for kmer kmer_list_i
+	#
+	tel_composition_dat = [get_nonoverlapping_kmer_hits(my_telseq, kmers_to_use, KMER_ISSUBSTRING),
+	                       atb,
+	                       my_dbta,
+	                       my_type,
+	                       my_rnm,
+	                       my_mapq]
+	return tel_composition_dat

@@ -78,8 +78,8 @@ def parse_cigar(cigar):
 
 #
 #
-def parse_read(line):
-	splt = line.strip().split('\t')
+def parse_read(splt):
+	#
 	cigar = splt[5]
 	flag  = int(splt[1])
 	ref   = splt[2]
@@ -87,6 +87,10 @@ def parse_read(line):
 	rdat  = splt[9]
 	rnm   = splt[0]
 	mapq  = int(splt[4])
+	#
+	is_unmapped = False
+	if ref == '*' or flag&4:
+		is_unmapped = True
 	#
 	orientation = 'FWD'
 	if flag&16:
@@ -113,16 +117,16 @@ def parse_read(line):
 	elif ref[:3] == 'tel':
 		ref_key = LARGE_NUMBER
 	#
-	elif ref == '*':
+	elif is_unmapped == True:
 		ref_key = LARGE_NUMBER + 1
-		(read_pos_1, read_pos_2) = (None, None)
-		(pos1, pos2) = (None, None)
 	#
 	else:
 		print('unknown ref name:', ref)
 		exit(1)
 	#
-	if ref != '*':
+	(read_pos_1, read_pos_2) = (None, None)
+	(pos1, pos2) = (None, None)
+	if is_unmapped == False:
 		cig_dat    = parse_cigar(cigar)
 		read_pos_1 = cig_dat[0]
 		read_pos_2 = cig_dat[0] + cig_dat[2]
@@ -146,11 +150,12 @@ def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='
 			print(n[:7], 'rdat len:', len(n[7]))
 		print()
 	r_coords = [[alns[n][0], alns[n][1], n] for n in range(len(alns)) if (alns[n][0] != None and alns[n][1] != None)]
+	# don't try to trim unmapped reads
 	if len(r_coords) == 0:
 		return alns
 	clust    = cluster_ranges(r_coords)
 	any_lap  = any([len(n) > 1 for n in clust])
-	#
+	# we have nothing to trim
 	if any_lap == False:
 		return alns
 	#
