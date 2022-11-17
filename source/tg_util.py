@@ -41,11 +41,13 @@ def exists_and_is_nonzero(fn):
 
 def makedir(d):
 	if not os.path.isdir(d):
-		os.system('mkdir -p '+d)
+		os.mkdir(d)
 
 def rm(fn):
-	if exists_and_is_nonzero(fn):
-		os.system('rm '+fn)
+	if os.path.isdir(fn):
+		os.rmdir(fn)
+	elif os.path.isfile(fn):
+		os.remove(fn)
 
 #
 #
