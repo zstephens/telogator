@@ -34,9 +34,8 @@ For Oxford Nanopore long (noisy) reads:
 
 `python3 get_subtel_reads.py \ `  
 `    --bam aln.bam \ `  
-`    --fa clr-reads.fa.gz \ `  
-`    --out subtel-reads.fa.gz \ `  
-`    --bed resources/subtel_regions.bed `  
+`    --in-reads clr-reads.fa.gz \ `  
+`    --out-reads subtel-reads.fa.gz \ `  
 
 ## (4) align subtel reads to telogator reference:
 
