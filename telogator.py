@@ -144,8 +144,11 @@ def main(raw_args=None):
 	#
 	NUM_PROCESSES = args.p
 
-	reads_skipped = {'min_readlen':0,
-	                 'trim_filter':0,
+	reads_skipped = {'trim_filter':0,
+	                 'min_readlen':0,
+	                 'unmapped':0,
+	                 'unknown_ref':0,
+	                 'no_chr_aln':0,
 	                 'min_telbases':0}
 
 	ANCHORED_TEL_BY_CHR    = {}
@@ -178,7 +181,15 @@ def main(raw_args=None):
 		for aln in samfile.fetch(until_eof=True):
 			sam_line    = str(aln).split('\t')
 			my_ref_ind  = sam_line[2].replace('#','')	# why would there ever be a # symbol here? I don't know.
-			sam_line[2] = refseqs[int(my_ref_ind)]		# pysam is dumb and prints ref indices instead of contig name
+			# pysam is dumb and prints ref indices instead of contig name
+			# - except unmapped, which is '*'
+			# - and I've also seen it spit out '-1' ...
+			if my_ref_ind.isdigit():
+				sam_line[2] = refseqs[int(my_ref_ind)]
+			elif my_ref_ind == '-1':
+				sam_line[2] = refseqs[-1]
+			else:
+				sam_line[2] = my_ref_ind
 			#
 			[rnm, ref_key, pos, read_pos_1, read_pos_2, ref, pos1, pos2, orientation, mapq, rdat] = parse_read(sam_line)
 			if rnm not in ALIGNMENTS_BY_RNAME:
@@ -222,6 +233,16 @@ def main(raw_args=None):
 			refs_we_aln_to = sorted(list(set(refs_we_aln_to)))
 			if refs_we_aln_to == ['*']:
 				reads_skipped['unmapped'] += 1
+				continue
+			# check for alignments to unexpected reference contigs
+			any_chr = any([n[:3] == 'chr' for n in refs_we_aln_to])
+			any_tel = any([n[:3] == 'tel' for n in refs_we_aln_to])
+			if any_chr == False and any_tel == False:
+				reads_skipped['unknown_ref'] += 1
+				continue
+			# we need at least 1 chr alignment to be anchorable anywhere
+			if any_chr == False:
+				reads_skipped['no_chr_aln'] += 1
 				continue
 			# minimum tel content
 			tel_bc = get_telomere_base_count(rdat, [CANONICAL_STRING, CANONICAL_STRING_REV], mode=READ_TYPE)
@@ -321,7 +342,7 @@ def main(raw_args=None):
 		#
 		if sum(reads_skipped.values()) > 0:
 			print()
-			print('reads filtered (anchorable telomeres):')
+			print('reads filtered:')
 			for k in sorted(reads_skipped.keys()):
 				if reads_skipped[k] > 0:
 					print(' -', k, reads_skipped[k])
