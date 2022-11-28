@@ -30,14 +30,14 @@ For Oxford Nanopore long (noisy) reads:
 `samtools sort -o aln.bam aln-unsort.bam`  
 `samtools index aln.bam`  
 
-## (3) extract subset of reads that were mapped to subtelomere regions:
+## (3) get subset of reads that were mapped to subtelomere regions:
 
 `python3 get_subtel_reads.py \ `  
 `    --bam aln.bam \ `  
 `    --in-reads clr-reads.fa.gz \ `  
 `    --out-reads subtel-reads.fa.gz`  
 
-## (4) align subtel reads to telogator reference:
+## (4) align read subset to telogator reference:
 
 We recommend using the [winnowmap](https://github.com/marbl/Winnowmap) aligner for best results:
 

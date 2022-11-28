@@ -177,7 +177,8 @@ def main(raw_args=None):
 		tt = time.time()
 		for aln in samfile.fetch(until_eof=True):
 			sam_line    = str(aln).split('\t')
-			sam_line[2] = refseqs[int(sam_line[2])]	# pysam is dumb and prints ref indices instead of contig name
+			my_ref_ind  = sam_line[2].replace('#','')	# why would there ever be a # symbol here? I don't know.
+			sam_line[2] = refseqs[int(my_ref_ind)]		# pysam is dumb and prints ref indices instead of contig name
 			#
 			[rnm, ref_key, pos, read_pos_1, read_pos_2, ref, pos1, pos2, orientation, mapq, rdat] = parse_read(sam_line)
 			if rnm not in ALIGNMENTS_BY_RNAME:
@@ -318,11 +319,13 @@ def main(raw_args=None):
 		#
 		# print stats on reads that were filtered
 		#
-		print()
-		for k in sorted(reads_skipped.keys()):
-			if reads_skipped[k] > 0:
-				print(k, reads_skipped[k])
-		print()
+		if sum(reads_skipped.values()) > 0:
+			print()
+			print('reads filtered (anchorable telomeres):')
+			for k in sorted(reads_skipped.keys()):
+				if reads_skipped[k] > 0:
+					print(' -', k, reads_skipped[k])
+			print()
 		#
 		# save output pickle
 		#
