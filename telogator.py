@@ -55,7 +55,7 @@ def main(raw_args=None):
 	#
 	parser.add_argument('-cd', type=int,   required=False, metavar='2000',        default=2000,      help="Maximum subtel distance to cluster anchored tels together")
 	parser.add_argument('-cr', type=int,   required=False, metavar='3',           default=3,         help="Minimum number of reads per anchored-tel cluster")
-	parser.add_argument('-ct', type=str,   required=False, metavar='p90',         default='p90',     help="Method for computing chr TL: mean / median / max / p90")
+	parser.add_argument('-cm', type=str,   required=False, metavar='p90',         default='p90',     help="Method for computing chr TL: mean / median / max / p90")
 	#
 	parser.add_argument('-vtm', type=int,  required=False, metavar='20000',       default=20000,     help="Violin plot (tel length) max value")
 	parser.add_argument('-vtt', type=int,  required=False, metavar='5000',        default=5000,      help="Violin plot (tel length) tick size")
@@ -81,7 +81,7 @@ def main(raw_args=None):
 		INPUT_TYPE = 'sam'
 	elif INPUT_ALN[-4:].lower() == '.bam':
 		INPUT_TYPE = 'bam'
-	elif INPUT_ALN[-4:].lower() == '.cram':
+	elif INPUT_ALN[-5:].lower() == '.cram':
 		INPUT_TYPE = 'cram'
 	elif INPUT_ALN[-2:].lower() == '.p':
 		INPUT_TYPE = 'pickle'
@@ -137,7 +137,7 @@ def main(raw_args=None):
 	#
 	ANCHOR_CLUSTER_DIST = args.cd
 	MIN_READS_PER_CLUST = args.cr
-	CHR_TL_METHOD       = args.ct
+	CHR_TL_METHOD       = args.cm
 	#
 	(VIOLIN_TLEN_MAX, VIOLIN_TLEN_TICK) = (args.vtm, args.vtt)
 	(VIOLIN_RLEN_MAX, VIOLIN_RLEN_TICK) = (args.vrm, args.vrt)
@@ -197,6 +197,11 @@ def main(raw_args=None):
 			ALIGNMENTS_BY_RNAME[rnm].append([read_pos_1, read_pos_2, ref, pos1, pos2, orientation, mapq, rdat])
 		sys.stdout.write(' (' + str(int(time.time() - tt)) + ' sec)\n')
 		sys.stdout.flush()
+		samfile.close()
+		#
+		if len(ALIGNMENTS_BY_RNAME) == 0:
+			print('Error: unable to get any reads from input ' + INPUT_TYPE)
+			exit(1)
 
 		#
 		# INITIAL FILTERING
@@ -489,10 +494,10 @@ def main(raw_args=None):
 	print('writing TL results to "' + OUT_CHR_TL.split('/')[-1] + '"...')
 	f = open(OUT_CHR_TL, 'w')
 	f.write('#chr' + '\t' +
-		    'position' + '\t' +
-		    'TL_' + CHR_TL_METHOD + '\t' +
-		    'read_TLs' + '\t' +
-		    'read_lengths' + '\n')
+	        'position' + '\t' +
+	        'TL_' + CHR_TL_METHOD + '\t' +
+	        'read_TLs' + '\t' +
+	        'read_lengths' + '\n')
 	for i in range(len(CHR_TEL_DAT)):
 		f.write('\t'.join(CHR_TEL_DAT[i]) + '\n')
 	f.close()
