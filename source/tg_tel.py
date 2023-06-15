@@ -381,7 +381,7 @@ def get_double_anchored_tels(ANCHORED_TEL_BY_CHR, NONTEL_REFSPANS_BY_CHR, gdat_p
 #
 #
 def get_tels_below_canonical_thresh(ANCHORED_TEL_BY_CHR, gtbct_params):
-    [MIN_CANONICAL_FRAC, CANONICAL_STRING, CANONICAL_STRING_REV, READ_TYPE] = gtbct_params
+    [MINIMUM_TEL_BASES, MIN_CANONICAL_FRAC, KMER_LIST, KMER_LIST_REV, READ_TYPE] = gtbct_params
     del_keys = []
     for k in sorted(ANCHORED_TEL_BY_CHR.keys()):
         del_list = []
@@ -390,17 +390,20 @@ def get_tels_below_canonical_thresh(ANCHORED_TEL_BY_CHR, gtbct_params):
             my_type = ANCHORED_TEL_BY_CHR[k][i][4]
             my_rdat = ANCHORED_TEL_BY_CHR[k][i][6]
             if k[-1] == 'p':
+                kmers_to_use = KMER_LIST
                 if my_type == 'p':
                     my_telseq = my_rdat[:my_tlen]
                 elif my_type == 'q':
                     my_telseq = RC(my_rdat[-my_tlen:])
             elif k[-1] == 'q':
+                kmers_to_use = KMER_LIST_REV
                 if my_type == 'p':
                     my_telseq = RC(my_rdat[:my_tlen])
                 elif my_type == 'q':
                     my_telseq = my_rdat[-my_tlen:]
-            my_canonical_frac = get_telomere_base_count(my_telseq, [CANONICAL_STRING, CANONICAL_STRING_REV], mode=READ_TYPE) / float(len(my_telseq))
-            if my_canonical_frac < MIN_CANONICAL_FRAC:
+            my_canonical_bases = get_telomere_base_count(my_telseq, kmers_to_use, mode=READ_TYPE)
+            my_canonical_frac  = my_canonical_bases / float(len(my_telseq))
+            if my_canonical_bases < MINIMUM_TEL_BASES or my_canonical_frac < MIN_CANONICAL_FRAC:
                 del_list.append(i)
         for di in sorted(del_list, reverse=True):
             del_keys.append((k,di))

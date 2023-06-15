@@ -1,30 +1,27 @@
 CCCTAA	blue	C	canonical
+CCCATT	blue	C	canonical,nanopore_only
+CCCAT	blue	C	canonical,nanopore_only
+CCATT	blue	C	canonical,nanopore_only
+CCAT	blue	C	canonical,nanopore_only
+CTTCTT	blue	C	canonical,nanopore_only
+CCCTGG	blue	C	canonical,nanopore_only
 CCTA	darkblue	N	denoise
 CCTAA	darkblue	N	denoise
 CCCTA	darkblue	N	denoise
 CCCCTA	darkblue	N	denoise
-
 CCCCCA	lightgreen	L	denoise
 CCCAA	darkgreen	P	denoise
 CCCA	darkgreen	P	denoise
 CCAA	darkgreen	P	denoise
 CCCCAA	green	F	denoise,tvr
-
 CCCTTA	cyan	K	tvr
 CCCTTAA	darkcyan	S	tvr
-
 CCCTAG	orange	G	tvr
 CCTAG	darkorange	Q	tvr
-
 CCCTCA	yellow	E	tvr
-
 CCCTCG	tan	I	tvr
-
 CCCTGA	red	D	tvr
-
 CCCGAA	violet	H	tvr
 CCCGA	darkviolet	R	tvr
-
 CCCTCTAA	gold	M	tvr
-
 CCCCCC	gray	T	denoise

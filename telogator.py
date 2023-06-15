@@ -74,7 +74,7 @@ def main(raw_args=None):
     # initiate input / output files
     #
     INPUT_ALN  = args.i
-    if exists_and_is_nonzero(INPUT_ALN) == False:
+    if exists_and_is_nonzero(INPUT_ALN) is False:
         print('Error reading -i input file')
         exit(1)
     if INPUT_ALN[-4:].lower() == '.sam':
@@ -107,22 +107,6 @@ def main(raw_args=None):
         makedir(OUT_PLOT_DIR)
 
     #
-    # parse telomere kmer data
-    #
-    KMER_FILE = args.k
-    if KMER_FILE != '':
-        fn_suffix = KMER_FILE.split('/')[-1]
-        print('using user-specified kmer list:', fn_suffix)
-    else:
-        print('using default telomere kmers')
-        sim_path  = pathlib.Path(__file__).resolve().parent
-        KMER_FILE = str(sim_path) + '/resources/kmers.tsv'
-    (KMER_METADATA, KMER_ISSUBSTRING, CANONICAL_STRING) = read_kmer_tsv(KMER_FILE)
-    [KMER_LIST, KMER_COLORS, KMER_LETTER, KMER_FLAGS] = KMER_METADATA
-    KMER_LIST_REV = [RC(n) for n in KMER_LIST]
-    CANONICAL_STRING_REV = RC(CANONICAL_STRING)
-
-    #
     # various parameters
     #
     READ_TYPE         = args.r
@@ -143,6 +127,22 @@ def main(raw_args=None):
     (VIOLIN_RLEN_MAX, VIOLIN_RLEN_TICK) = (args.vrm, args.vrt)
     #
     NUM_PROCESSES = args.p
+
+    #
+    # parse telomere kmer data
+    #
+    KMER_FILE = args.k
+    if KMER_FILE != '':
+        fn_suffix = KMER_FILE.split('/')[-1]
+        print('using user-specified kmer list:', fn_suffix)
+    else:
+        print('using default telomere kmers')
+        sim_path  = pathlib.Path(__file__).resolve().parent
+        KMER_FILE = str(sim_path) + '/resources/kmers.tsv'
+    (KMER_METADATA, KMER_ISSUBSTRING, CANONICAL_STRINGS) = read_kmer_tsv(KMER_FILE, READ_TYPE)
+    [KMER_LIST, KMER_COLORS, KMER_LETTER, KMER_FLAGS] = KMER_METADATA
+    KMER_LIST_REV = [RC(n) for n in KMER_LIST]
+    CANONICAL_STRINGS_REV = [RC(n) for n in CANONICAL_STRINGS]
 
     reads_skipped = {'trim_filter':0,
                      'min_readlen':0,
@@ -242,15 +242,15 @@ def main(raw_args=None):
             # check for alignments to unexpected reference contigs
             any_chr = any([n[:3] == 'chr' for n in refs_we_aln_to])
             any_tel = any([n[:3] == 'tel' for n in refs_we_aln_to])
-            if any_chr == False and any_tel == False:
+            if any_chr is False and any_tel is False:
                 reads_skipped['unknown_ref'] += 1
                 continue
             # we need at least 1 chr alignment to be anchorable anywhere
-            if any_chr == False:
+            if any_chr is False:
                 reads_skipped['no_chr_aln'] += 1
                 continue
             # minimum tel content
-            tel_bc = get_telomere_base_count(rdat, [CANONICAL_STRING, CANONICAL_STRING_REV], mode=READ_TYPE)
+            tel_bc = get_telomere_base_count(rdat, CANONICAL_STRINGS + CANONICAL_STRINGS_REV, mode=READ_TYPE)
             if tel_bc < MINIMUM_TEL_BASES:
                 reads_skipped['min_telbases'] += 1
                 if INPUT_TYPE != 'pickle':  # use non-tel reads for downstream filtering of double-anchored tels
@@ -389,7 +389,7 @@ def main(raw_args=None):
     sys.stdout.flush()
     num_starting_reads = sum([len(ANCHORED_TEL_BY_CHR[k]) for k in ANCHORED_TEL_BY_CHR.keys()])
     #
-    gtbct_params = [MIN_CANONICAL_FRAC, CANONICAL_STRING, CANONICAL_STRING_REV, READ_TYPE]
+    gtbct_params = [MINIMUM_TEL_BASES, MIN_CANONICAL_FRAC, CANONICAL_STRINGS, CANONICAL_STRINGS_REV, READ_TYPE]
     del_keys     = get_tels_below_canonical_thresh(ANCHORED_TEL_BY_CHR, gtbct_params)
     #
     num_ending_reads = num_starting_reads - len(del_keys)
@@ -476,7 +476,7 @@ def main(raw_args=None):
             READLEN_OUT[my_chr].extend(my_rlens)
             #
             clust_tcdat = []
-            gtc_params  = [my_chr, clust_num, KMER_LIST, KMER_LIST_REV, KMER_ISSUBSTRING]
+            gtc_params  = [my_chr, clust_num, KMER_LIST, KMER_LIST_REV, KMER_ISSUBSTRING, READ_TYPE]
             for i in ind_list:
                 clust_tcdat.append(get_telomere_composition(ANCHORED_TEL_BY_CHR[k][i], gtc_params))
             clust_tcout = [my_chr, clust_num, ind_list, clust_tcdat]
