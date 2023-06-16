@@ -23,7 +23,6 @@ MAX_NONTEL_MEDIAN_KMER_DENSITY = 0.25
 #
 MIN_DOUBLE_ANCHOR_LEN   = 1000
 MIN_DOUBLE_ANCHOR_READS = 3
-MIN_CANONICAL_FRAC      = 0.15
 
 # for debugging purposes
 DO_NOT_OVERWRITE = True
@@ -49,6 +48,7 @@ def main(raw_args=None):
     parser.add_argument('-ft', type=int,   required=False, metavar='200',         default=200,       help="Initial read filtering: Min tel bases")
     parser.add_argument('-ff', type=float, required=False, metavar='0.9',         default=0.9,       help="Anchored-tel filtering: Max frac of read that can be tel")
     parser.add_argument('-fp', type=float, required=False, metavar='0.25',        default=0.25,      help="Anchored-tel filtering: Max minor p/q fraction in tels")
+    parser.add_argument('-fc', type=float, required=False, metavar='0.15',        default=0.15,      help="Anchored-tel filtering: Minimum canonical frac in tels")
     #
     parser.add_argument('-sa', type=str,   required=False, metavar='largest',     default='largest', help="Subtel/tel anchoring strategy")
     parser.add_argument('-sm', type=str,   required=False, metavar='mapq',        default='mapq',    help="Repeated matches trimming strategy")
@@ -61,6 +61,8 @@ def main(raw_args=None):
     parser.add_argument('-vtt', type=int,  required=False, metavar='5000',        default=5000,      help="Violin plot (tel length) tick size")
     parser.add_argument('-vrm', type=int,  required=False, metavar='50000',       default=50000,     help="Violin plot (read length) max value")
     parser.add_argument('-vrt', type=int,  required=False, metavar='10000',       default=10000,     help="Violin plot (read length) tick size")
+    #
+    parser.add_argument('--no-anchorfilt', required=False, action='store_true',   default=False,     help="Skip double-anchored read filtering")
     #
     parser.add_argument('--plot',          required=False, action='store_true',   default=False,     help="Create read plots")
     parser.add_argument('--plot-filt',     required=False, action='store_true',   default=False,     help="Create read plots (filtered reads)")
@@ -109,12 +111,13 @@ def main(raw_args=None):
     #
     # various parameters
     #
-    READ_TYPE         = args.r
-    MINIMUM_READ_LEN  = args.fl
-    MINIMUM_TEL_BASES = args.ft
-    MAXIMUM_TEL_FRAC  = args.ff
-    MAXIMUM_MINOR_PQ  = args.fp
-    P_VS_Q_AMP_THRESH = args.t
+    READ_TYPE          = args.r
+    MINIMUM_READ_LEN   = args.fl
+    MINIMUM_TEL_BASES  = args.ft
+    MAXIMUM_TEL_FRAC   = args.ff
+    MAXIMUM_MINOR_PQ   = args.fp
+    MIN_CANONICAL_FRAC = args.fc
+    P_VS_Q_AMP_THRESH  = args.t
     #
     ANCHORING_STRATEGY  = args.sa
     MATCH_TRIM_STRATEGY = args.sm
@@ -125,6 +128,8 @@ def main(raw_args=None):
     #
     (VIOLIN_TLEN_MAX, VIOLIN_TLEN_TICK) = (args.vtm, args.vtt)
     (VIOLIN_RLEN_MAX, VIOLIN_RLEN_TICK) = (args.vrm, args.vrt)
+    #
+    SKIP_FILT_DOUBLEANCHOR = args.no_anchorfilt
     #
     NUM_PROCESSES = args.p
 
@@ -177,7 +182,7 @@ def main(raw_args=None):
         refseqs = samfile.references
         sys.stdout.write('getting all read data from input alignment...')
         sys.stdout.flush()
-        tt = time.time()
+        tt = time.perf_counter()
         for aln in samfile.fetch(until_eof=True):
             sam_line    = str(aln).split('\t')
             my_ref_ind  = sam_line[2].replace('#','')   # why would there ever be a # symbol here? I don't know.
@@ -195,7 +200,7 @@ def main(raw_args=None):
             if rnm not in ALIGNMENTS_BY_RNAME:
                 ALIGNMENTS_BY_RNAME[rnm] = []
             ALIGNMENTS_BY_RNAME[rnm].append([read_pos_1, read_pos_2, ref, pos1, pos2, orientation, mapq, rdat])
-        sys.stdout.write(' (' + str(int(time.time() - tt)) + ' sec)\n')
+        sys.stdout.write(' (' + str(int(time.perf_counter() - tt)) + ' sec)\n')
         sys.stdout.flush()
         samfile.close()
         #
@@ -211,7 +216,7 @@ def main(raw_args=None):
         sys.stdout.write('initial read filtering...')
         sys.stdout.flush()
         num_starting_reads = len(ALIGNMENTS_BY_RNAME.keys())
-        tt = time.time()
+        tt = time.perf_counter()
         for readname in ALIGNMENTS_BY_RNAME.keys():
             abns_k = repeated_matches_trimming(sorted(ALIGNMENTS_BY_RNAME[readname]), strategy=MATCH_TRIM_STRATEGY, print_debug=PRINT_DEBUG)
             # did we lose all of our alignments during trimming?
@@ -263,7 +268,7 @@ def main(raw_args=None):
             # we passed all filters?
             FILTERED_READS.append([readname, rdat, copy.deepcopy(abns_k)])
         #
-        sys.stdout.write(' (' + str(int(time.time() - tt)) + ' sec)\n')
+        sys.stdout.write(' (' + str(int(time.perf_counter() - tt)) + ' sec)\n')
         num_ending_reads = len(FILTERED_READS)
         sys.stdout.write(' - ' + str(num_starting_reads) + ' --> ' + str(num_ending_reads) + ' reads\n')
         sys.stdout.flush()
@@ -291,7 +296,7 @@ def main(raw_args=None):
         sys.stdout.flush()
         num_starting_reads = len(FILTERED_READS)
         num_ending_reads   = 0
-        tt = time.time()
+        tt = time.perf_counter()
         #
         par_params      = [KMER_LIST, KMER_LIST_REV, TEL_WINDOW_SIZE, P_VS_Q_AMP_THRESH, ANCHORING_STRATEGY, PLOT_READS, INPUT_TYPE, OUT_PLOT_DIR, PRINT_DEBUG, PLOT_FILT_READS]
         par_params_filt = [MAXIMUM_TEL_FRAC, MAXIMUM_MINOR_PQ, MAXIMUM_UNEXPLAINED_FRAC, MAX_NONTEL_MEDIAN_KMER_DENSITY]
@@ -333,7 +338,7 @@ def main(raw_args=None):
                     NONTEL_REFSPANS_BY_CHR[k] = []
                 NONTEL_REFSPANS_BY_CHR[k].extend(nontel_spans[k])
         #
-        sys.stdout.write(' (' + str(int(time.time() - tt)) + ' sec)\n')
+        sys.stdout.write(' (' + str(int(time.perf_counter() - tt)) + ' sec)\n')
         sys.stdout.write(' - ' + str(num_starting_reads) + ' --> ' + str(num_ending_reads) + ' reads\n')
         sys.stdout.flush()
 
@@ -362,25 +367,26 @@ def main(raw_args=None):
     #
     # remove telomeres that we thought were single-anchored but other reads tell us it is actually double-anchored
     #
-    sys.stdout.write('removing anchored tels that double-anchored according to other reads...')
-    sys.stdout.flush()
-    num_starting_reads = sum([len(ANCHORED_TEL_BY_CHR[k]) for k in ANCHORED_TEL_BY_CHR.keys()])
-    tt = time.time()
-    #
-    gdat_params = [MIN_DOUBLE_ANCHOR_LEN, MIN_DOUBLE_ANCHOR_READS, PRINT_DEBUG]
-    del_keys    = get_double_anchored_tels(ANCHORED_TEL_BY_CHR, NONTEL_REFSPANS_BY_CHR, gdat_params)
-    #
-    num_ending_reads = num_starting_reads - len(del_keys)
-    del_keys2 = []
-    for (k,di) in del_keys:
-        del ANCHORED_TEL_BY_CHR[k][di]
-        if len(ANCHORED_TEL_BY_CHR[k]) == 0:
-            del_keys2.append(k)
-    for k in del_keys2:
-        del ANCHORED_TEL_BY_CHR[k]
-    sys.stdout.write(' (' + str(int(time.time() - tt)) + ' sec)\n')
-    sys.stdout.write(' - ' + str(num_starting_reads) + ' --> ' + str(num_ending_reads) + ' reads\n')
-    sys.stdout.flush()
+    if not SKIP_FILT_DOUBLEANCHOR:
+        sys.stdout.write('removing anchored tels that double-anchored according to other reads...')
+        sys.stdout.flush()
+        num_starting_reads = sum([len(ANCHORED_TEL_BY_CHR[k]) for k in ANCHORED_TEL_BY_CHR.keys()])
+        tt = time.perf_counter()
+        #
+        gdat_params = [MIN_DOUBLE_ANCHOR_LEN, MIN_DOUBLE_ANCHOR_READS, PRINT_DEBUG]
+        del_keys    = get_double_anchored_tels(ANCHORED_TEL_BY_CHR, NONTEL_REFSPANS_BY_CHR, gdat_params)
+        #
+        num_ending_reads = num_starting_reads - len(del_keys)
+        del_keys2 = []
+        for (k,di) in del_keys:
+            del ANCHORED_TEL_BY_CHR[k][di]
+            if len(ANCHORED_TEL_BY_CHR[k]) == 0:
+                del_keys2.append(k)
+        for k in del_keys2:
+            del ANCHORED_TEL_BY_CHR[k]
+        sys.stdout.write(' (' + str(int(time.perf_counter() - tt)) + ' sec)\n')
+        sys.stdout.write(' - ' + str(num_starting_reads) + ' --> ' + str(num_ending_reads) + ' reads\n')
+        sys.stdout.flush()
 
     #
     # remove reads where telomere region is insufficiently canonical
@@ -388,6 +394,7 @@ def main(raw_args=None):
     sys.stdout.write('removing reads with tel regions that are insufficiently canonical...')
     sys.stdout.flush()
     num_starting_reads = sum([len(ANCHORED_TEL_BY_CHR[k]) for k in ANCHORED_TEL_BY_CHR.keys()])
+    tt = time.perf_counter()
     #
     gtbct_params = [MINIMUM_TEL_BASES, MIN_CANONICAL_FRAC, CANONICAL_STRINGS, CANONICAL_STRINGS_REV, READ_TYPE]
     del_keys     = get_tels_below_canonical_thresh(ANCHORED_TEL_BY_CHR, gtbct_params)
@@ -400,7 +407,7 @@ def main(raw_args=None):
             del_keys2.append(k)
     for k in del_keys2:
         del ANCHORED_TEL_BY_CHR[k]
-    sys.stdout.write(' (' + str(int(time.time() - tt)) + ' sec)\n')
+    sys.stdout.write(' (' + str(int(time.perf_counter() - tt)) + ' sec)\n')
     sys.stdout.write(' - ' + str(num_starting_reads) + ' --> ' + str(num_ending_reads) + ' reads\n')
     sys.stdout.flush()
 
