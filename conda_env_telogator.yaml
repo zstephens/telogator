@@ -1,0 +1,12 @@
+name: telogator
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - matplotlib
+  - numpy
+  - pysam
+  - regex
+  - pywavelets

@@ -117,10 +117,10 @@ def parse_read(splt):
             exit(1)
     #
     elif ref[:3] == 'tel':
-        ref_key = LARGE_NUMBER
+        ref_key = LARGE_NUMBER - 1
     #
     elif is_unmapped is True:
-        ref_key = LARGE_NUMBER + 1
+        ref_key = LARGE_NUMBER
     #
     else:
         print('unknown ref name:', ref)
@@ -140,6 +140,12 @@ def parse_read(splt):
             pos1, pos2 = pos, pos + cig_dat[1]
         elif orientation == 'REV':
             pos1, pos2 = pos + cig_dat[1], pos
+    else:
+        ref = '*'
+        pos = 0
+        pos1, pos2 = 0, len(rdat)
+        read_pos_1, read_pos_2 = 0, len(rdat)
+        mapq = 0
     #
     return [rnm, ref_key, pos, read_pos_1, read_pos_2, ref, pos1, pos2, orientation, mapq, rdat]
 
@@ -187,7 +193,7 @@ def repeated_matches_trimming(alns, min_read_span_after_trimming=200, strategy='
                             else:
                                 max_found = True
                         elif strategy == 'mapq':
-                            if q == max_span[2] and max_found == False:
+                            if q == max_span[2] and max_found is False:
                                 max_found = True
                             else:
                                 del_list.append(j)
