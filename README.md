@@ -1,4 +1,4 @@
-# Telogator has been succeeded by Telogator2
+# Telogator --> Telogator2
 
 This software is now deprecated. Please use [Telogator2](https://github.com/zstephens/telogator2).
 
