@@ -1,7 +1,9 @@
+# Telogator has been succeeded by Telogator2
+
+This software is now deprecated. Please use [Telogator2](https://github.com/zstephens/telogator2).
+
 # Telogator
 A method for measuring chromosome-specific telomere length (TL) from long reads.
-
-If you're interested in allele-specific TL or analysis of telomere variant repeats, see [Telogator2](https://github.com/zstephens/telogator2).
 
 If this software has been useful for your work, please cite us at:
 
